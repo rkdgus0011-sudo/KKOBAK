@@ -31,7 +31,7 @@ const DEFAULT_METHODS = [
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 const UNKNOWN_CAT = { id: '', name: '미분류', emoji: '🏷️', kind: 'out' };
 const BACKFILL_DAYS = 92; // auto-record never reaches further back than this
-const VIEW_NAMES = ['home', 'room', 'list', 'income', 'subs', 'refill', 'accounts', 'goals', 'loans', 'credit', 'stats', 'budget', 'settings'];
+const VIEW_NAMES = ['home', 'list', 'income', 'subs', 'refill', 'accounts', 'goals', 'loans', 'credit', 'stats', 'budget', 'settings'];
 
 /* ================= utils ================= */
 const $ = (s, r = document) => r.querySelector(s);
@@ -112,7 +112,7 @@ const S = {
   credit: {}, creditDoc: false,
   memos: {}, memosDoc: false,
   accts: {}, acctsDoc: false,
-  room: {}, roomDoc: false, roomSel: null, roomTab: 'floor', // 꼬박방: 소품·미션 (meta/room)
+  room: {}, roomDoc: false, // 주간 미션 고른 기록 (meta/room)
   deco: {},                     // 꾸미기 사진: { wall: dataURL, mascot: dataURL }   // 통장: acctId -> account | null   // 쓸 돈 메모: memoId -> memo | null
   loaded: { months: false, meta: false },
   definitive: { months: false, meta: false },
@@ -402,7 +402,7 @@ let autoDone = false;
 function onData() {
   scheduleRender();
   if (!autoDone && S.definitive.months && S.definitive.meta) { autoDone = true; autoRecord(); }
-  checkRewards();
+  
 }
 function onStoreError(e) {
   if (e && e.code === 'revoked') S.mode = 'denied';
@@ -453,7 +453,7 @@ async function boot() {
   applyTheme(prefs.theme);
   render();
   const c = window.claude;
-  const goLocal = () => { S.mode = 'local'; S.loaded = { months: true, meta: true }; render(); checkRewards(); };
+  const goLocal = () => { S.mode = 'local'; S.loaded = { months: true, meta: true }; render();  };
   if (!c || typeof c.use !== 'function') return goLocal();
   let db = null;
   try { db = await c.use('db'); } catch (e) { db = null; }
@@ -520,9 +520,9 @@ function typingInView() {
   const a = document.activeElement;
   return !!a && $view.contains(a) && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(button|checkbox|radio|range|submit)$/.test(a.type)));
 }
-const VIEWS = { home: vHome, room: vRoom, list: vList, income: vIncome, subs: vSubs, refill: vRefill, accounts: vAccounts, goals: vGoals, loans: vLoans, credit: vCredit, stats: vStats, budget: vBudget, settings: vSettings };
+const VIEWS = { home: vHome, list: vList, income: vIncome, subs: vSubs, refill: vRefill, accounts: vAccounts, goals: vGoals, loans: vLoans, credit: vCredit, stats: vStats, budget: vBudget, settings: vSettings };
 function renderView() {
-  if (typingInView() || rmDrag) { deferred = true; return; } // never yank a field (or a dragged 소품) out from under the cursor
+  if (typingInView()) { deferred = true; return; } // never yank a field out from under the cursor
   deferred = false;
   const a = document.activeElement, fid = a && $view.contains(a) && a.id ? a.id : null;
   $view.innerHTML = VIEWS[S.view]();
@@ -710,7 +710,7 @@ function vHome() {
 
   return `<div class="cols">
     <div class="col">${flowCard(false)}${hero}${calCard}${homeReportCard()}${pace}${recent}</div>
-    <div class="col">${budget}${refillHomeCard()}${homeAcctCard()}${homeStampCard()}${homeGoalsCard()}${cats}${upc}${meth}</div>
+    <div class="col">${budget}${refillHomeCard()}${homeAcctCard()}${habitCard()}${homeGoalsCard()}${cats}${upc}${meth}</div>
   </div>`;
 }
 
@@ -1125,7 +1125,6 @@ function closeSheet() {
   document.documentElement.style.overflow = '';
   if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
   lastFocus = null;
-  if (mrToastT || mrNew().length) setTimeout(announceRewards, 300);
 }
 const pressed = (on) => `aria-pressed="${!!on}"`;
 
@@ -1246,7 +1245,7 @@ function saveTx() {
   savePrefs();
   const wasEdit = !!f.id;
   closeSheet();
-  checkRewards();
+  
   if (!wasEdit) mascotCheer();
   if (f.memoId) { markMemoDone(f.memoId, id, tx.amount, tx.date); toast('기록했어요 · 메모는 ‘썼어요’로 정리했어요'); return; }
   const mm = !wasEdit && tx.kind === 'out' && !f.newId ? matchMemo(tx) : null;
@@ -3272,7 +3271,7 @@ function normLook(l) {
     bg: pick(x.bg, ['none', 'grad', 'photo'], d.bg), grad: pick(x.grad, [...GRADS.map(g => g.id), 'custom'], d.grad),
     g1: isHex(x.g1) ? x.g1 : d.g1, g2: isHex(x.g2) ? x.g2 : d.g2, angle: pick(+x.angle, [180, 160, 90], d.angle),
     power: pick(+x.power, [1, 2, 3], d.power), blur: pick(+x.blur, [0, 1, 2], d.blur), dim: pick(+x.dim, [1, 2, 3], d.dim), glass: !!x.glass,
-    char: pick(x.char, ['none', 'coin', 'mine'], d.char), charSize: pick(x.charSize, ['s', 'm', 'l'], d.charSize), charPos: pick(x.charPos, ['r', 'l'], d.charPos), talk: x.talk !== false,
+    char: pick(x.char, ['none', 'mine'], d.char), charSize: pick(x.charSize, ['s', 'm', 'l'], d.charSize), charPos: pick(x.charPos, ['r', 'l'], d.charPos), talk: x.talk !== false,
     font: pick(x.font, FONTS.map(f => f.id), d.font), numBase: x.numBase !== false, fs: pick(x.fs, Object.keys(FS), d.fs), radius: pick(x.radius, Object.keys(RAD), d.radius),
   };
 }
@@ -3370,11 +3369,11 @@ function applyLook(src) {
 if (darkMQ.addEventListener) darkMQ.addEventListener('change', () => { if (document.documentElement.getAttribute('data-pal') === 'custom') applyLook(curLook()); });
 
 /* --- 캐릭터 --- */
-// 내장 캐릭터는 꼬박방에서 꾸미는 도트 캐릭터예요 (ava-art)
+// 떠다니는 캐릭터: 직접 넣은 그림만 써요
 function renderMascot(l) {
   let el = document.getElementById('mascot');
   const mine = S.deco && S.deco.mascot;
-  const src = l.char === 'coin' ? 'coin' : l.char === 'mine' && mine ? mine : '';
+  const src = l.char === 'mine' && mine ? mine : '';
   if (!src || !document.getElementById('view')) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('button');
@@ -3383,10 +3382,10 @@ function renderMascot(l) {
   }
   el.setAttribute('aria-label', l.talk ? '캐릭터 — 누르면 한마디 해요' : '캐릭터');
   el.dataset.size = l.charSize; el.dataset.pos = l.charPos;
-  const key = src === 'coin' ? 'ch:' + JSON.stringify(chLook()) : 'mine:' + src.length;
+  const key = 'mine:' + src.length;
   if (el.dataset.src !== key) {
     el.dataset.src = key;
-    el.innerHTML = `<span class="m-pic${src === 'coin' ? ' ch' : ''}">${src === 'coin' ? chSvg(chLook()) : `<img src="${src}" alt="">`}</span><span class="bubble" role="status" hidden></span>`;
+    el.innerHTML = `<span class="m-pic"><img src="${src}" alt=""></span><span class="bubble" role="status" hidden></span>`;
   }
 }
 let mascotIdx = 0, bubbleTimer = 0;
@@ -3396,8 +3395,7 @@ function mascotLines() {
   if (bs && bs.left <= 0) L.push('이번 달 예산을 넘었어요. 내일은 무지출 도전 어때요?');
   const h = habitStats();
   const SI = stampInfo(), wn = SI.weeks[weekMon(t)] || 0;
-  if (wn >= 2) L.push(`이번 주 ${wn}일 기록했어요. ${wn >= 4 ? '보너스 도장도 받았어요!' : `${4 - wn}일 더 적으면 보너스 도장!`}`);
-  if (SI.bal >= 3) L.push(`도장 ${SI.bal}개 모았어요. 꼬박방을 꾸며 볼까요?`);
+  if (wn >= 2) L.push(`이번 주 ${wn}일 기록했어요. ${wn >= 4 ? '주 4일 목표 달성!' : `${4 - wn}일 더 적으면 주 4일 목표 달성!`}`);
   if (!h.todayAny) L.push('오늘 쓴 돈, 잊기 전에 적어 볼까요?');
   else if (!h.todayOut) L.push('오늘은 아직 쓴 돈이 없어요. 이대로 무지출?');
   const up = plannedIn(addDays(t, 1), addDays(t, 3))[0];
@@ -3501,11 +3499,9 @@ function lookCard() {
     const mine = S.deco && S.deco.mascot;
     body = `<div class="char-opts">
         <button type="button" class="char-opt" data-act="lk-char" data-v="none" aria-pressed="${l.char === 'none'}"><span class="cp-none">없음</span></button>
-        <button type="button" class="char-opt" data-act="lk-char" data-v="coin" aria-pressed="${l.char === 'coin'}"><span class="cp-img ch">${chSvg(chLook())}</span>${esc(chLook().name)}</button>
         <button type="button" class="char-opt" data-act="lk-char" data-v="mine" aria-pressed="${l.char === 'mine'}" ${mine ? '' : 'disabled'}><span class="cp-img">${mine ? `<img src="${mine}" alt="">` : ''}</span>내 그림</button>
       </div>
       <div class="habit-acts"><label class="btn btn-soft btn-sm file-btn">${icon('plus', 'sm')}${mine ? '내 그림 바꾸기' : '내 그림 넣기'}<input type="file" id="lk-mascot" accept="image/*" hidden></label>${mine ? '<button class="btn btn-ghost btn-sm" type="button" data-act="lk-mascot-del">내 그림 빼기</button>' : ''}</div>
-      <p class="amt-hint">꼬박이의 얼굴·헤어·옷은 꼬박방의 ‘꼬박이 꾸미기’에서 바꿔요. <button class="card-link" type="button" data-act="go-room">꾸미러 가기</button></p>
       <p class="amt-hint">배경이 투명한 PNG 그림이 가장 예뻐요. 직접 그린 그림이나 사진을 써 주세요. 다른 사람의 캐릭터를 공개된 곳에 쓰면 저작권 문제가 생길 수 있어요.</p>
       ${l.char !== 'none' ? `<span class="lab">크기</span>${segBtns('lk-csize', l.charSize, [['s', '작게'], ['m', '보통'], ['l', '크게']])}
       <span class="lab">자리</span>${segBtns('lk-cpos', l.charPos, [['r', '오른쪽 아래'], ['l', '왼쪽 아래']])}
@@ -3810,229 +3806,7 @@ document.addEventListener('keydown', e => {
   if (saveOrder(list.dataset.list, ids)) toast(`${j + 1}번째로 옮겼어요`);
 });
 
-/* ================= 꼬박이: 우리만의 캐릭터 (레이어형 벡터 그림 · 얼굴/헤어/옷/소품을 바꿔 입어요) ================= */
-// 그림판: 120 × 190. 모든 파츠가 같은 몸 위에 겹쳐지도록 좌표를 맞췄어요.
-const CH_W = 120, CH_H = 190, OL = '#4A3226';
-const hx3 = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-const chMix = (a, b, t) => { const A = hx3(a), B = hx3(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
-const dk = (h, t = 0.2) => chMix(h, '#3B2216', t);
-const lt = (h, t = 0.4) => chMix(h, '#FFFFFF', t);
-const sP = (d, fill, sw = 2) => `<path d="${d}" fill="${fill}" stroke="${OL}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>`;
-const sF = (d, fill, op) => `<path d="${d}" fill="${fill}"${op ? ` opacity="${op}"` : ''}/>`;
-const sL = (d, col = OL, w = 2, op) => `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"${op ? ` opacity="${op}"` : ''}/>`;
-const sC = (x, y, r, fill, sw = 2) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"${sw ? ` stroke="${OL}" stroke-width="${sw}"` : ''}/>`;
-const sE = (x, y, rx, ry, fill, op) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${fill}"${op ? ` opacity="${op}"` : ''}/>`;
-const limb = (d, fill, w) => sL(d, OL, w + 4) + sL(d, fill, w);
-const mirX = d => d.replace(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g, (m, x, y) => `${+(120 - x).toFixed(2)} ${y}`); // 왼쪽 그림을 오른쪽으로 뒤집기
-const both = (d, f) => f(d) + f(mirX(d));
-const tinyStar = (x, y, r, col) => sF(`M${x} ${y - r} L${x + r * 0.32} ${y - r * 0.32} L${x + r} ${y} L${x + r * 0.32} ${y + r * 0.32} L${x} ${y + r} L${x - r * 0.32} ${y + r * 0.32} L${x - r} ${y} L${x - r * 0.32} ${y - r * 0.32} Z`, col);
-const stampMark = (x, y, r) => sC(x, y, r, '#D8453B', 0) + `<circle cx="${x}" cy="${y}" r="${(r * 0.72).toFixed(2)}" fill="none" stroke="#FFF4EC" stroke-width="${(r * 0.16).toFixed(2)}"/>` + `<text x="${x}" y="${(y + r * 0.36).toFixed(2)}" text-anchor="middle" font-size="${(r * 0.95).toFixed(2)}" font-weight="700" fill="#FFF4EC" font-family="sans-serif">꼬</text>`;
-
-/* --- 색 --- */
-const CH_SKINS = [['s1', '아주 밝은 피부', '#FFE6D6'], ['s2', '밝은 피부', '#F9D3B9'], ['s3', '중간 피부', '#EDBA94'], ['s4', '조금 어두운 피부', '#D39A70'], ['s5', '어두운 피부', '#A56D47'], ['s6', '아주 어두운 피부', '#774A31']];
-const CH_HAIRC = [['black', '블랙', '#2B2321'], ['dkbrown', '다크 브라운', '#5A3A2A'], ['milk', '밀크 브라운', '#A27652'], ['ash', '애쉬 그레이', '#8E8D96'], ['pinkb', '핑크 브라운', '#B06F6C'], ['blue', '블루 블랙', '#2C3550'], ['butter', '버터 블론드', '#E6C47E'], ['cherry', '체리 레드', '#A93043'], ['mint', '민트', '#8CCFBF'], ['lilac', '라일락', '#B9A3DE']];
-const CH_COLORS = [['cloud', '클라우드 화이트', '#F4F0E8'], ['butter', '버터 옐로', '#F6E1A0'], ['peach', '피치', '#F8C1A2'], ['pink', '핑크', '#F5B5C7'], ['cherry', '체리', '#C93A4C'], ['lavender', '라벤더', '#BBA8E6'], ['sky', '스카이', '#A6CDF0'], ['denim', '데님', '#5C7DB0'], ['navy', '네이비', '#323D63'], ['matcha', '말차', '#A3BA7E'], ['forest', '포레스트', '#3F7A5C'], ['mocha', '모카', '#A57A63'], ['gray', '그레이', '#A0A5AD'], ['black', '블랙', '#34302F']];
-const CH_EYEC = '#3A2620';
-const chColor = (list, id, def) => (list.find(c => c[0] === id) || list.find(c => c[0] === def) || list[0])[2];
-
-/* --- 얼굴 --- */
-const EYE_L = 47, EYE_R = 73, EYE_Y = 67;
-const CH_EYES = [
-  { id: 'dot', name: '동글 눈', draw: () => [EYE_L, EYE_R].map(x => sE(x, EYE_Y, 3.5, 4.4, CH_EYEC) + sC(x + 1.1, EYE_Y - 1.7, 1.35, '#fff', 0) + sC(x - 1, EYE_Y + 1.6, 0.6, '#fff', 0)).join('') },
-  { id: 'sparkle', name: '반짝 눈', draw: () => [EYE_L, EYE_R].map(x => sE(x, EYE_Y, 4.3, 5.3, CH_EYEC) + sE(x, EYE_Y + 1.4, 3, 3.2, '#8A5A3C') + sE(x, EYE_Y + 1, 1.6, 2, CH_EYEC) + sC(x + 1.4, EYE_Y - 2.2, 1.7, '#fff', 0) + sC(x - 1.4, EYE_Y + 2.4, 0.8, '#fff', 0) + sL(`M${x - 5} ${EYE_Y - 4.2} Q${x} ${EYE_Y - 7.6} ${x + 5} ${EYE_Y - 4.6}`, CH_EYEC, 1.6)).join('') },
-  { id: 'smile', name: '웃는 눈', draw: () => [EYE_L, EYE_R].map(x => sL(`M${x - 4} ${EYE_Y + 1} Q${x} ${EYE_Y - 4} ${x + 4} ${EYE_Y + 1}`, CH_EYEC, 2.3)).join('') },
-  { id: 'sleepy', name: '졸린 눈', draw: () => [EYE_L, EYE_R].map(x => sL(`M${x - 4} ${EYE_Y} Q${x} ${EYE_Y + 3.4} ${x + 4} ${EYE_Y}`, CH_EYEC, 2.2) + sL(`M${x - 4.6} ${EYE_Y - 1.4} L${x + 4.6} ${EYE_Y - 1.4}`, CH_EYEC, 1.2, 0.5)).join('') },
-  { id: 'wink', name: '윙크', draw: () => sE(EYE_L, EYE_Y, 3.5, 4.4, CH_EYEC) + sC(EYE_L + 1.1, EYE_Y - 1.7, 1.35, '#fff', 0) + sL(`M${EYE_R - 4} ${EYE_Y - 2} L${EYE_R + 3} ${EYE_Y} L${EYE_R - 4} ${EYE_Y + 2.4}`, CH_EYEC, 2.2) },
-  { id: 'star', name: '별 눈', draw: () => [EYE_L, EYE_R].map(x => sE(x, EYE_Y, 4, 4.9, CH_EYEC) + tinyStar(x + 0.3, EYE_Y - 0.6, 2.6, '#FFF3B0') + sC(x - 1.6, EYE_Y + 2.4, 0.7, '#fff', 0)).join('') },
-];
-const CH_MOUTHS = [
-  { id: 'smile', name: '미소', draw: () => sL('M56 79 Q60 83 64 79', CH_EYEC, 1.9) },
-  { id: 'open', name: '활짝', draw: () => sP('M55.5 78 Q60 87 64.5 78 Z', '#C2525A', 1.6) + sF('M57.6 82.4 Q60 80.8 62.4 82.4 Q60 85 57.6 82.4 Z', '#F08C8C') },
-  { id: 'cat', name: '고양이 입', draw: () => sL('M55 78.6 Q57.5 81.6 60 78.8 Q62.5 81.6 65 78.6', CH_EYEC, 1.8) },
-  { id: 'o', name: '오!', draw: () => `<ellipse cx="60" cy="80" rx="2.2" ry="2.7" fill="#C2525A" stroke="${CH_EYEC}" stroke-width="1.5"/>` },
-  { id: 'flat', name: '무표정', draw: () => sL('M57 80 L63 80', CH_EYEC, 1.8) },
-  { id: 'tongue', name: '메롱', draw: () => sL('M55.5 78.6 Q60 81.6 64.5 78.6', CH_EYEC, 1.8) + sP('M59 80.4 Q59 85 61.6 84.6 Q63.6 84 62.6 80.2', '#F08C8C', 1.4) },
-];
-const CH_BROWS = [
-  { id: 'soft', name: '순한 눈썹', draw: () => sL('M43 58.5 Q47 56.8 51 58.2', CH_EYEC, 1.6) + sL('M69 58.2 Q73 56.8 77 58.5', CH_EYEC, 1.6) },
-  { id: 'up', name: '당찬 눈썹', draw: () => sL('M43 59.5 L51 57', CH_EYEC, 1.8) + sL('M69 57 L77 59.5', CH_EYEC, 1.8) },
-  { id: 'sad', name: '시무룩 눈썹', draw: () => sL('M43 57 L51 59.4', CH_EYEC, 1.7) + sL('M69 59.4 L77 57', CH_EYEC, 1.7) },
-  { id: 'none', name: '앞머리에 숨김', draw: () => '' },
-];
-
-/* --- 헤어: 뒷머리(back)는 얼굴 뒤, 앞머리(front)는 얼굴 위 --- */
-const CH_HAIRS = [
-  { id: 'short', name: '단정 숏컷',
-    back: () => '',
-    front: c => sP('M22 74 C 16 38 38 19 60 19 C 82 19 104 38 98 74 L93 72 C 93 60 90 52 86 47 Q 80 55 70 53 Q 63 51 58 45 Q 52 54 41 53 Q 34 55 30 50 C 27 56 27 64 27 72 Z', c) + sF('M30 30 Q 46 22 60 23 Q 44 26 34 36 Z', lt(c, 0.25)) },
-  { id: 'curtain', name: '가르마 펌',
-    back: c => sP('M20 70 C 16 34 104 34 100 70 L100 84 Q 92 90 84 86 L 36 86 Q 26 90 20 84 Z', dk(c, 0.12)),
-    front: c => sP('M20 82 C 12 38 36 18 60 18 C 84 18 108 38 100 82 Q 96 86 92 80 C 92 64 86 52 78 46 Q 70 50 64 58 Q 62 46 60 40 Q 56 48 52 52 Q 44 46 40 46 C 32 54 28 66 28 80 Q 24 86 20 82 Z', c) + sF('M36 28 Q 50 21 64 22 Q 48 26 40 34 Z', lt(c, 0.25)) },
-  { id: 'bob', name: '동글 단발',
-    back: c => sP('M17 64 C 14 26 106 26 103 64 L105 96 Q 98 103 88 99 L 32 99 Q 22 103 15 96 Z', dk(c, 0.12)),
-    front: c => sP('M18 94 C 10 40 34 18 60 18 C 86 18 110 40 102 94 Q 97 100 92 95 C 93 76 92 62 88 52 Q 76 58 64 54 Q 58 56 52 54 Q 42 58 32 52 C 28 62 27 76 28 95 Q 23 100 18 94 Z', c) + sF('M34 28 Q 50 21 64 22 Q 48 26 38 35 Z', lt(c, 0.25)) },
-  { id: 'long', name: '긴 생머리',
-    back: c => sP('M16 64 C 12 24 108 24 104 64 L108 134 Q 98 142 86 136 L 34 136 Q 22 142 12 134 Z', dk(c, 0.12)),
-    front: c => sP('M18 120 C 8 40 34 18 60 18 C 86 18 112 40 102 120 Q 96 126 91 118 C 93 92 92 64 87 50 Q 76 57 64 52 Q 58 48 56 44 Q 50 54 38 54 Q 34 54 32 52 C 28 66 28 90 29 118 Q 24 126 18 120 Z', c) + sF('M34 28 Q 50 21 64 22 Q 48 26 38 35 Z', lt(c, 0.25)) },
-  { id: 'pony', name: '포니테일',
-    back: c => sP('M84 30 C 112 26 118 60 108 92 Q 104 104 98 100 Q 104 80 98 58 Q 94 42 82 38 Z', c) + sP('M80 30 Q 88 24 92 32 Q 88 38 80 36 Z', '#D8453B', 1.6),
-    front: c => sP('M22 74 C 16 38 38 19 60 19 C 82 19 104 38 98 74 L94 72 C 93 60 90 52 86 47 Q 76 54 66 52 Q 60 50 56 46 Q 50 54 40 53 Q 34 54 30 50 C 27 56 27 64 26 72 Z', c) + sF('M30 30 Q 46 22 60 23 Q 44 26 34 36 Z', lt(c, 0.25)) },
-  { id: 'bun', name: '똥머리',
-    back: c => sC(60, 18, 13, c),
-    front: c => sP('M21 76 C 16 38 38 22 60 22 C 82 22 104 38 99 76 L94 74 C 93 60 90 52 86 48 Q 80 54 72 52 Q 66 50 62 46 Q 58 52 50 54 Q 40 56 32 50 C 28 58 27 66 27 74 Z', c) + sL('M52 14 Q 60 22 68 14', dk(c, 0.3), 1.4) + sF('M32 32 Q 46 25 60 26 Q 44 29 36 38 Z', lt(c, 0.25)) },
-  { id: 'twin', name: '양갈래',
-    back: c => sP('M22 52 C 2 56 0 92 8 118 Q 12 126 18 118 Q 12 96 18 74 Z', c) + sP('M98 52 C 118 56 120 92 112 118 Q 108 126 102 118 Q 108 96 102 74 Z', c) + sC(20, 56, 4.4, '#D8453B', 1.6) + sC(100, 56, 4.4, '#D8453B', 1.6),
-    front: c => sP('M22 74 C 16 38 38 19 60 19 C 82 19 104 38 98 74 L94 72 C 93 60 90 52 86 47 Q 78 55 68 53 Q 62 52 60 46 Q 58 52 52 53 Q 42 55 34 47 C 29 54 27 64 26 72 Z', c) + sF('M30 30 Q 46 22 60 23 Q 44 26 34 36 Z', lt(c, 0.25)) },
-  { id: 'curly', name: '뽀글 펌',
-    back: c => sP('M18 80 Q 8 72 14 60 Q 8 46 20 38 Q 20 22 36 22 Q 44 10 60 14 Q 76 10 84 22 Q 100 22 100 38 Q 112 46 106 60 Q 112 72 102 80 Q 104 92 92 94 L 28 94 Q 16 92 18 80 Z', dk(c, 0.1)),
-    front: c => sP('M22 70 Q 16 60 22 52 Q 18 40 30 34 Q 32 22 46 24 Q 52 14 62 20 Q 74 14 80 24 Q 94 22 92 34 Q 104 40 98 52 Q 104 60 98 70 Q 94 66 92 60 Q 86 56 80 54 Q 74 58 68 54 Q 62 58 56 54 Q 50 58 44 54 Q 36 58 30 60 Q 26 64 22 70 Z', c) + [[34, 34], [52, 26], [72, 27], [88, 38]].map(([x, y]) => sL(`M${x - 3} ${y + 2} Q ${x} ${y - 2} ${x + 3} ${y + 2}`, lt(c, 0.3), 1.4)).join('') },
-];
-
-/* --- 몸 (피부) --- */
-const ARM_L = 'M45 106 Q38.5 120 37.6 136';
-const SLEEVE_S = 'M45 106 Q41.5 113 40.4 120';
-const SLEEVE_L = 'M45 106 Q39 120 38 132.5';
-function chBody(skin) {
-  const sd = dk(skin, 0.14);
-  return both(ARM_L, d => limb(d, skin, 7)) + limb('M53.5 136 L53.5 167', skin, 8) + limb('M66.5 136 L66.5 167', skin, 8)
-    + sP('M55 89 L65 89 L65 103 L55 103 Z', skin, 1.8) + sF('M56 90.4 L64 90.4 L64 95 Q60 97.4 56 95 Z', sd);
-}
-const chHands = skin => sC(37.6, 137.6, 4.7, skin, 1.9) + sC(82.4, 137.6, 4.7, skin, 1.9);
-function chHead(skin, look) {
-  const sd = dk(skin, 0.12);
-  return `<ellipse cx="24" cy="68" rx="5.4" ry="6.4" fill="${skin}" stroke="${OL}" stroke-width="2"/><ellipse cx="96" cy="68" rx="5.4" ry="6.4" fill="${skin}" stroke="${OL}" stroke-width="2"/>`
-    + sF('M23 65 Q 25 68 23 71', sd) + sP('M60 27 C 85 27 97 44 97 63 C 97 84 82 95 60 95 C 38 95 23 84 23 63 C 23 44 35 27 60 27 Z', skin)
-    + (look.blush ? sE(40.5, 76, 5.2, 3.1, '#F49494', 0.5) + sE(79.5, 76, 5.2, 3.1, '#F49494', 0.5) : '')
-    + chPart(CH_BROWS, look.brows).draw() + chPart(CH_EYES, look.eyes).draw() + chPart(CH_MOUTHS, look.mouth).draw();
-}
-
-/* --- 상의 --- */
-const TORSO = 'M42.5 102 Q60 95.5 77.5 102 L80 139 Q60 144 40 139 Z';
-const torso = c => sP(TORSO, c) + sF('M44 128 Q60 132 76 128 L77 138 Q60 142 43 138 Z', dk(c, 0.1));
-const sleeves = (path, c, w = 11.5) => both(path, d => limb(d, c, w));
-const cuffs = c => both('M35.2 129.8 L41.2 131.2', d => sL(d, dk(c, 0.18), 2.6));
-const CH_TOPS = [
-  { id: 'tee', name: '반팔 티셔츠', draw: c => sleeves(SLEEVE_S, c) + torso(c) + sL('M53.5 99.4 Q60 104.6 66.5 99.4', OL, 1.8) + stampMark(68, 114, 4.2) },
-  { id: 'hood', name: '후드 티', draw: c => sleeves(SLEEVE_L, c) + cuffs(c) + torso(c) + sP('M46 100.6 Q60 113 74 100.6 Q 72 95 60 95 Q 48 95 46 100.6 Z', dk(c, 0.08), 1.8) + sL('M56 106 L55 118', OL, 1.4) + sL('M64 106 L65 118', OL, 1.4) + sC(55, 119, 1.3, lt(c, 0.5), 1.2) + sC(65, 119, 1.3, lt(c, 0.5), 1.2) + sP('M48 124 L72 124 L74 135 L46 135 Z', dk(c, 0.06), 1.6) },
-  { id: 'sweat', name: '맨투맨', draw: c => sleeves(SLEEVE_L, c) + cuffs(c) + torso(c) + sL('M53 99.6 Q60 105 67 99.6', dk(c, 0.25), 2.6) + sL('M41 135 Q60 139.4 79 135', dk(c, 0.22), 2) + stampMark(60, 117, 5.4) },
-  { id: 'stripe', name: '스트라이프 티', price: 5, draw: c => sleeves(SLEEVE_L, c) + torso(c) + [108, 116, 124, 132].map(y => sL(`M${41.4 + (y - 102) * 0.03} ${y} Q60 ${y + 2.6} ${78.6 - (y - 102) * 0.03} ${y}`, chMix(c, '#2C3550', 0.7), 2.4)).join('') + both('M37.8 125 L43.6 126', d => sL(d, chMix(c, '#2C3550', 0.7), 2.2)) + sL('M53.5 99.4 Q60 104.6 66.5 99.4', OL, 1.8) },
-  { id: 'cardigan', name: '니트 카디건', draw: c => sleeves(SLEEVE_L, c) + cuffs(c) + torso(c) + sP('M53 99 L60 121 L67 99 Q60 102 53 99 Z', '#FFF8EE', 1.6) + sL('M60 121 L60 142', OL, 1.4) + [125, 131, 137].map(y => sC(62.6, y, 1.4, lt(c, 0.55), 1.1)).join('') + sP('M45 126 L54 126 L54 134 L45 134 Z', dk(c, 0.06), 1.4) + [48, 52].map(x => sL(`M${x} 108 L${x} 112 M${x + 20} 108 L${x + 20} 112`, dk(c, 0.18), 1.1)).join('') },
-  { id: 'shirt', name: '카라 셔츠', price: 6, draw: c => sleeves(SLEEVE_L, c) + cuffs(c) + torso(c) + sP('M51 99 L59.6 106 L54 112 Z', lt(c, 0.3), 1.6) + sP('M69 99 L60.4 106 L66 112 Z', lt(c, 0.3), 1.6) + sL('M60 106 L60 141', dk(c, 0.3), 1.2) + [114, 122, 130].map(y => sC(60, y, 1.1, lt(c, 0.6), 0)).join('') + sP('M64 114 L71 114 L71 121 L64 121 Z', dk(c, 0.05), 1.3) },
-  { id: 'pj', name: '별빛 잠옷 상의', draw: c => sleeves(SLEEVE_L, c) + both('M35.4 130 L41.4 131.4', d => sL(d, '#FFF1C9', 2.4)) + torso(c) + [[48, 112], [70, 110], [56, 126], [74, 128], [46, 133], [64, 118]].map(([x, y]) => tinyStar(x, y, 2.6, '#FFE38A')).join('') + sP('M51 99 L60 108 L55 111 Z', '#FFF1C9', 1.5) + sP('M69 99 L60 108 L65 111 Z', '#FFF1C9', 1.5) + [116, 124, 132].map(y => sC(60, y, 1.2, '#FFF1C9', 1)).join('') },
-];
-
-/* --- 하의 --- */
-const CH_BOTTOMS = [
-  { id: 'wide', name: '와이드 팬츠', draw: c => sP('M43.5 131 L76.5 131 L80 167 Q72 170 62.5 167 L60 145 L57.5 167 Q48 170 40 167 Z', c) + sL('M51 146 L50 165 M69 146 L70 165', dk(c, 0.22), 1.3) },
-  { id: 'shorts', name: '반바지', draw: c => sP('M43.5 131 L76.5 131 L79 153 L62 153 L60 144 L58 153 L41 153 Z', c) + sL('M42 149 L57.6 149 M62.4 149 L78.4 149', dk(c, 0.2), 1.2) },
-  { id: 'skirt', name: '플리츠 스커트', price: 6, draw: c => sP('M45 131 L75 131 L82.5 156 Q60 161 37.5 156 Z', c) + [48, 54, 60, 66, 72].map((x, i) => sL(`M${x + (i - 2) * 0.6} 134 L${x + (i - 2) * 3} 157.6`, dk(c, 0.2), 1.2)).join('') },
-  { id: 'overall', name: '멜빵바지', draw: c => sP('M44.5 131 L75.5 131 L77 166 Q71 169 63 166 L60 146 L57 166 Q49 169 43 166 Z', c) + sL('M47 158 L56 158 M64 158 L73 158', dk(c, 0.22), 1.4), over: c => sP('M48 112 L72 112 L74 133 L46 133 Z', c) + sP('M53 116 L67 116 L67 124 L53 124 Z', dk(c, 0.08), 1.3) + sL('M48 113 L46 101 M72 113 L74 101', c, 3.4) + sL('M48 113 L46 101 M72 113 L74 101', OL, 0.9, 0.5) + sC(49, 114, 1.5, '#F3C548', 1.1) + sC(71, 114, 1.5, '#F3C548', 1.1) },
-  { id: 'pj', name: '별빛 잠옷 바지', draw: c => sP('M43.5 131 L76.5 131 L79 165 Q72 168 62.5 165 L60 145 L57.5 165 Q48 168 41 165 Z', c) + sL('M41.4 162 Q49 164.6 57.8 162 M62.2 162 Q71 164.6 78.6 162', '#FFF1C9', 2.2) + [[48, 140], [70, 142], [52, 154], [68, 156], [64, 136]].map(([x, y]) => tinyStar(x, y, 2.4, '#FFE38A')).join('') },
-];
-
-/* --- 신발 --- */
-const SHOE_L = 'M46.2 171 Q46.2 163.4 53.3 163.4 Q60.4 163.4 60.4 171 L60.4 174 Q60.4 177.6 57.4 177.6 L49.2 177.6 Q46.2 177.6 46.2 174 Z';
-const CH_SHOES = [
-  { id: 'sneaker', name: '스니커즈', draw: c => both(SHOE_L, d => sP(d, c)) + both('M47 173.6 L59.6 173.6', d => sL(d, '#FFFFFF', 2.2)) + both('M50 166.6 L57 166.6', d => sL(d, dk(c, 0.3), 1.2)) },
-  { id: 'mary', name: '리본 메리제인', price: 6, draw: c => both(SHOE_L, d => sP(d, c)) + both('M47 166.4 L60 166.4', d => sL(d, dk(c, 0.35), 1.6)) + both('M53.5 164 m-3 0 l3 2 l3 -2 l0 4 l-3 -2 l-3 2 z', d => sP(d, lt(c, 0.4), 1)) },
-  { id: 'slipper', name: '털 슬리퍼', draw: c => both('M43.6 172 Q43.6 162 53.5 162 Q63.4 162 63.4 172 L63.4 175 Q63.4 178.4 59.6 178.4 L47.4 178.4 Q43.6 178.4 43.6 175 Z', d => sP(d, c)) + both('M45 167 Q53.5 160.6 62 167', d => sL(d, '#FFFFFF', 3.2)) + sE(53.5, 169, 2, 1.4, '#F49494', 0.8) + sE(66.5, 169, 2, 1.4, '#F49494', 0.8) },
-  { id: 'boots', name: '포근 부츠', price: 5, draw: c => both('M45.4 152 L61.6 152 L62.4 171 L62.4 174 Q62.4 177.8 58.8 177.8 L48 177.8 Q44.6 177.8 44.6 174 L44.6 171 Z', d => sP(d, c)) + both('M44.6 152.4 Q53.5 148 62.4 152.4 L62.4 157 Q53.5 153 44.6 157 Z', d => sP(d, '#FFF6E8', 1.5)) },
-];
-
-/* --- 머리 소품 · 손 · 가방 --- */
-const CH_HEADS = [
-  { id: 'none', name: '없음', draw: () => '' },
-  { id: 'pin', name: '도장 핀', draw: () => stampMark(85, 39, 6.6) + `<circle cx="85" cy="39" r="6.6" fill="none" stroke="${OL}" stroke-width="1.6"/>` },
-  { id: 'ribbon', name: '큰 리본', price: 4, draw: c => sP('M84 34 Q 70 22 72 38 Q 72 46 84 38 Z', c, 1.8) + sP('M84 34 Q 98 20 98 36 Q 98 46 84 38 Z', c, 1.8) + sC(84, 36, 3, dk(c, 0.15), 1.6) },
-  { id: 'beanie', name: '니트 비니', price: 5, draw: c => sP('M20 58 C 18 22 102 22 100 58 Q 60 50 20 58 Z', c) + sP('M19 54 Q60 45 101 54 L101 62 Q60 53 19 62 Z', dk(c, 0.1), 1.8) + [30, 40, 50, 60, 70, 80, 90].map(x => sL(`M${x} ${x < 60 ? 49 + (60 - x) * 0.08 : 49 + (x - 60) * 0.08} L${x} ${x < 60 ? 57 + (60 - x) * 0.08 : 57 + (x - 60) * 0.08}`, dk(c, 0.25), 1)).join('') + sC(60, 20, 7, lt(c, 0.35)) },
-  { id: 'beret', name: '베레모', draw: c => sP('M20 46 C 20 22 94 16 104 40 Q 104 50 64 50 Q 26 52 20 46 Z', c) + sL('M28 46 Q 64 44 98 42', dk(c, 0.2), 1.4) + sP('M62 19 L64 13 L67 19 Z', dk(c, 0.15), 1.4) },
-  { id: 'crown', name: '별빛 왕관', draw: () => sP('M44 33 L46 15 L53 25 L60 10 L67 25 L74 15 L76 33 Q 60 37 44 33 Z', '#F6CB4E') + sL('M45 29 Q60 32.6 75 29', '#E0A92C', 1.6) + tinyStar(60, 24, 3.4, '#FFFFFF') + sC(46, 15, 1.8, '#B9A3DE', 1.2) + sC(74, 15, 1.8, '#B9A3DE', 1.2) + sC(60, 10, 2, '#F5B5C7', 1.2) },
-  { id: 'phones', name: '헤드폰', price: 8, draw: c => sL('M20 66 C 14 18 106 18 100 66', OL, 6.4) + sL('M20 66 C 14 18 106 18 100 66', c, 3.6) + sP('M14 60 Q 14 54 20 54 L24 54 L24 80 L20 80 Q 14 80 14 74 Z', c) + sP('M106 60 Q 106 54 100 54 L96 54 L96 80 L100 80 Q 106 80 106 74 Z', c) },
-];
-const CH_HANDS = [
-  { id: 'none', name: '없음', draw: () => '' },
-  { id: 'ledger', name: '꼬박 가계부', draw: () => sP('M77 124 L93 121.6 L95.6 145 L79.6 147.4 Z', '#2F7A5B') + sP('M80.4 128 L90 126.6 L90.8 132.4 L81.2 133.8 Z', '#FFF8EE', 1.2) + stampMark(88.6, 140, 3.4) + sL('M78.4 125 L80.8 146.6', '#235F46', 1.4) },
-  { id: 'coffee', name: '아이스 라떼', price: 4, draw: () => sP('M77.4 120 L90 120 L88.2 145 L79.2 145 Z', 'rgba(255,255,255,.85)', 1.8) + sF('M78.4 128 L89 128 L88.3 144 L79.3 144 Z', '#C9A27E') + sP('M76.4 117 L91 117 L91 121 L76.4 121 Z', '#FFFFFF', 1.6) + sL('M85 117 L88 106', OL, 1.6) + sP('M78.4 131 L88.6 131 L88.2 137 L78.8 137 Z', '#2F7A5B', 1.2) },
-  { id: 'coin', name: '동전 풍선', price: 5, draw: () => sL('M84 134 Q 92 112 96 92', OL, 1.2) + sC(98, 82, 11, '#F6CB4E') + `<circle cx="98" cy="82" r="7.6" fill="none" stroke="#E0A92C" stroke-width="1.6"/>` + `<text x="98" y="86.2" text-anchor="middle" font-size="11" font-weight="700" fill="#C98A1C" font-family="sans-serif">₩</text>` },
-];
-const CH_BAGS = [
-  { id: 'none', name: '없음', draw: () => '', strap: () => '' },
-  { id: 'cross', name: '미니 크로스백', price: 6, draw: c => sL('M47 101 L74 128', OL, 3.6) + sL('M47 101 L74 128', dk(c, 0.2), 1.8) + sP('M66 125 L82 125 Q84 125 84 127 L84 137 Q84 139 82 139 L68 139 Q66 139 66 137 Z', c, 1.8) + sL('M66.6 130 L83.4 130', dk(c, 0.2), 1.2) + sC(75, 131.6, 1.4, '#F3C548', 1) },
-  { id: 'eco', name: '에코백', price: 4, draw: c => sL('M45 104 Q 36 112 33 130', OL, 3.2) + sL('M45 104 Q 36 112 33 130', '#EFE4D2', 1.6) + sP('M26 130 L42 130 L44 152 L24 152 Z', '#EFE4D2', 1.8) + stampMark(34, 141, 4) },
-];
-const CH_SLOTS = { hair: CH_HAIRS, eyes: CH_EYES, mouth: CH_MOUTHS, brows: CH_BROWS, top: CH_TOPS, bottom: CH_BOTTOMS, shoes: CH_SHOES, head: CH_HEADS, hand: CH_HANDS, bag: CH_BAGS };
-const chPart = (list, id) => list.find(p => p.id === id) || list[0];
-const CH_DEF = { name: '꼬박이', skin: 's2', eyes: 'dot', mouth: 'smile', brows: 'soft', blush: true, hair: 'curtain', hc: 'dkbrown', top: 'sweat', tc: 'cloud', bottom: 'wide', bc: 'denim', shoes: 'sneaker', fc: 'cloud', head: 'pin', qc: 'pink', hand: 'none', bag: 'none' };
-
-// 꼬박이 그리기. crop: [x, y, w, h] 부분만 보여 줄 때 (보관함 썸네일)
-function chSvg(raw, crop) {
-  const a = { ...CH_DEF, ...(raw || {}) };
-  const skin = chColor(CH_SKINS, a.skin, 's2'), hc = chColor(CH_HAIRC, a.hc, 'dkbrown');
-  const tc = chColor(CH_COLORS, a.tc, 'cloud'), bc = chColor(CH_COLORS, a.bc, 'denim'), fc = chColor(CH_COLORS, a.fc, 'cloud'), qc = chColor(CH_COLORS, a.qc, 'pink');
-  const hair = chPart(CH_HAIRS, a.hair), bot = chPart(CH_BOTTOMS, a.bottom), bag = chPart(CH_BAGS, a.bag);
-  const vb = crop || [0, 0, CH_W, CH_H];
-  return `<svg viewBox="${vb.join(' ')}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">`
-    + hair.back(hc)
-    + chBody(skin)
-    + chPart(CH_SHOES, a.shoes).draw(fc)
-    + bot.draw(bc)
-    + chPart(CH_TOPS, a.top).draw(tc)
-    + (bot.over ? bot.over(bc) : '')
-    + chHands(skin)
-    + bag.draw(qc)
-    + chHead(skin, a)
-    + hair.front(hc)
-    + chPart(CH_HEADS, a.head).draw(qc)
-    + chPart(CH_HANDS, a.hand).draw()
-    + '</svg>';
-}
-// 옷·소품만 따로 (보관함·보상 그림)
-const CH_ITEM_CROP = { top: [24, 92, 72, 54], bottom: [32, 126, 56, 46], shoes: [40, 158, 40, 24], head: [8, 4, 104, 64], hand: [62, 68, 52, 84], bag: [18, 96, 70, 60] };
-const CH_ITEM_CROP_P = { head_crown: [38, 4, 44, 36], head_ribbon: [64, 16, 40, 30], head_pin: [74, 28, 22, 22], head_beanie: [14, 10, 92, 56], head_beret: [16, 8, 92, 46], head_phones: [8, 14, 104, 70], hand_ledger: [70, 115, 32, 38], hand_coffee: [68, 100, 32, 50], hand_coin: [78, 68, 36, 72], bag_cross: [40, 96, 48, 46], bag_eco: [18, 100, 32, 56] };
-function chItemSvg(slot, part, raw) {
-  const a = { ...CH_DEF, ...(raw || {}) }, c = k => chColor(CH_COLORS, a[k], CH_DEF[k]);
-  const p = chPart(CH_SLOTS[slot], part);
-  let body = '';
-  if (slot === 'top') body = p.draw(c('tc'));
-  else if (slot === 'bottom') body = p.draw(c('bc')) + (p.over ? p.over(c('bc')) : '');
-  else if (slot === 'shoes') body = p.draw(c('fc'));
-  else if (slot === 'head') body = (part === 'beanie' || part === 'beret' || part === 'phones' ? `<path d="M60 27 C 85 27 97 44 97 63 C 97 84 82 95 60 95 C 38 95 23 84 23 63 C 23 44 35 27 60 27 Z" fill="#00000010"/>` : '') + p.draw(c('qc'));
-  else if (slot === 'hand') body = p.draw();
-  else if (slot === 'bag') body = p.draw(c('qc'));
-  return `<svg viewBox="${(CH_ITEM_CROP_P[slot + '_' + part] || CH_ITEM_CROP[slot]).join(' ')}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">${body}</svg>`;
-}
-
-/* ================= 꼬박방 가구: 도장·동전·가계부 모티프로 새로 그린 가구 (주 색은 바꿀 수 있어요) ================= */
-// 캐릭터와 같은 축척(방 1칸 = 그림 4.5)으로 그려서 선 굵기가 같아요.
-const FU = 4.5;
-const WOOD = '#D9A56B', WOOD_D = '#B98450', WOOD_L = '#EEC895', CREAM = '#FFF6E8';
-const FURN_COLS = [['peach', '피치', '#F7B9A0'], ['butter', '버터', '#F6DD94'], ['matcha', '말차', '#A9C487'], ['mint', '민트', '#9ED8C8'], ['sky', '스카이', '#A9CDEE'], ['lavender', '라벤더', '#C2AEE8'], ['pink', '핑크', '#F5B5C7'], ['cherry', '체리', '#D65A5F'], ['cocoa', '코코아', '#A57A63'], ['cloud', '클라우드', '#F4F0E8']];
-const furnCol = (it, id) => (FURN_COLS.find(c => c[0] === id) || FURN_COLS.find(c => c[0] === it.col) || FURN_COLS[0])[2];
-const sR = (x, y, w, h, r, fill, sw = 2) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"${sw ? ` stroke="${OL}" stroke-width="${sw}" stroke-linejoin="round"` : ''}/>`;
-const book = (x, y, w, h, c) => sR(x, y, w, h, 1.5, c, 1.6) + sL(`M${x + 1.6} ${y + 4} L${x + w - 1.6} ${y + 4} M${x + 1.6} ${y + h - 4} L${x + w - 1.6} ${y + h - 4}`, lt(c, 0.45), 1.2);
-const leaf = (x, y, r, rot, c) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${(r * 0.62).toFixed(2)}" transform="rotate(${rot} ${x} ${y})" fill="${c}" stroke="${OL}" stroke-width="1.6"/>`;
-const coin = (x, y, r) => sC(x, y, r, '#F6CB4E', 1.6) + `<circle cx="${x}" cy="${y}" r="${(r * 0.62).toFixed(2)}" fill="none" stroke="#E0A92C" stroke-width="1.2"/>`;
-
-const FURN = [
-  { id: 'f_rug', name: '도장 러그', rw: 66, rug: true, vb: [300, 84], col: 'matcha', draw: c => sE(150, 44, 146, 37, c) + `<ellipse cx="150" cy="44" rx="146" ry="37" fill="${c}" stroke="${OL}" stroke-width="2"/>` + `<ellipse cx="150" cy="44" rx="128" ry="30" fill="none" stroke="${CREAM}" stroke-width="3" stroke-dasharray="7 6"/>` + `<ellipse cx="150" cy="44" rx="104" ry="23" fill="${lt(c, 0.35)}"/>` + `<ellipse cx="150" cy="44" rx="34" ry="12" fill="none" stroke="${dk(c, 0.15)}" stroke-width="3"/>` + `<ellipse cx="150" cy="44" rx="26" ry="9" fill="none" stroke="${dk(c, 0.15)}" stroke-width="1.6"/>` + `<text x="150" y="49.5" text-anchor="middle" font-size="14" font-weight="700" fill="${dk(c, 0.15)}" font-family="sans-serif" transform="scale(1 1)">꼬</text>` + [70, 230].map(x => tinyStar(x, 44, 7, CREAM)).join('') },
-  { id: 'f_plant', name: '동전나무 화분', rw: 22, vb: [100, 140], col: 'peach', draw: c => sL('M50 96 Q 48 70 40 52 M50 96 Q 54 66 64 44 M50 96 Q 50 60 52 34', '#5E8A4A', 2.6) + leaf(36, 52, 13, -30, '#86B86F') + leaf(66, 42, 13, 30, '#86B86F') + leaf(50, 30, 12, -5, '#9CC983') + leaf(28, 72, 11, -50, '#7AAE63') + leaf(72, 66, 11, 40, '#7AAE63') + coin(58, 60, 7.5) + coin(38, 36, 6.5) + coin(76, 26, 5.5) + sP('M24 92 L76 92 L70 134 Q70 136 68 136 L32 136 Q30 136 30 134 Z', c) + sP('M20 88 L80 88 L80 98 L20 98 Z', dk(c, 0.08)) + stampMark(50, 117, 8) },
-  { id: 'f_desk', name: '꼬박 좌식 책상', rw: 42, vb: [189, 124], col: 'cocoa', draw: c => sP('M30 60 L38 60 L37 104 L31 104 Z', WOOD_D) + sP('M151 60 L159 60 L158 104 L152 104 Z', WOOD_D) + sP('M10 58 L179 58 L179 66 Q179 70 175 70 L14 70 Q10 70 10 66 Z', WOOD) + sP('M16 50 L173 50 L179 58 L10 58 Z', WOOD_L) + sP('M18 70 L28 70 L26 118 Q26 120 24 120 L20 120 Q18 120 18 118 Z', WOOD) + sP('M161 70 L171 70 L171 118 Q171 120 169 120 L165 120 Q163 120 163 118 Z', WOOD) + sP('M52 44 L92 40 L94 52 L52 55 Z', CREAM, 1.8) + sP('M92 40 L130 44 L130 55 L94 52 Z', '#FFFDF6', 1.8) + sL('M58 47 L86 44.4 M58 51 L80 49 M100 45 L124 47.4 M100 49 L120 51', '#C9B79E', 1.1) + sP('M48 46 L52 44 L52 55 L48 56 Z', c, 1.4) + sR(138, 40, 16, 9, 2, '#D8453B', 1.6) + sR(140, 42, 12, 5, 1, '#F07B72', 0) + sP('M118 30 L124 30 L124 40 L118 40 Z', WOOD_D, 1.6) + sE(121, 29, 5, 3.2, '#D8453B') + `<ellipse cx="121" cy="29" rx="5" ry="3.2" fill="#D8453B" stroke="${OL}" stroke-width="1.6"/>` + sL('M64 32 L84 26', '#F3C548', 3.4) + sL('M64 32 L84 26', OL, 0.8, 0.5) + stampMark(112, 48, 3.4) },
-  { id: 'f_jar', name: '저금 유리병 테이블', rw: 22, vb: [100, 150], col: 'sky', draw: c => sP('M44 82 L56 82 L58 134 L42 134 Z', WOOD) + `<ellipse cx="50" cy="137" rx="22" ry="6" fill="${WOOD_D}" stroke="${OL}" stroke-width="2"/>` + `<ellipse cx="50" cy="80" rx="42" ry="10" fill="${WOOD}" stroke="${OL}" stroke-width="2"/>` + `<ellipse cx="50" cy="78" rx="36" ry="7" fill="${WOOD_L}"/>` + sP('M28 76 L28 34 Q28 26 36 26 L64 26 Q72 26 72 34 L72 76 Q50 81 28 76 Z', 'rgba(222,240,250,.75)') + coin(38, 70, 6) + coin(50, 72, 6) + coin(62, 70, 6) + coin(44, 61, 6) + coin(57, 61, 6) + coin(50, 51, 6) + sP('M31 16 L69 16 L69 26 L31 26 Z', c) + sL('M33 20.5 L67 20.5', lt(c, 0.4), 1.6) + sR(39, 33, 22, 12, 2, CREAM, 1.4) + `<text x="50" y="42.6" text-anchor="middle" font-size="8" font-weight="700" fill="#D8453B" font-family="sans-serif">꼬박</text>` + sL('M66 34 L66 64', '#FFFFFF', 2.4, 0.7) },
-  { id: 'f_sofa', name: '도장 쿠션 소파', rw: 54, vb: [243, 166], col: 'peach', draw: c => sP('M40 146 L48 146 L47 160 L41 160 Z', WOOD_D) + sP('M195 146 L203 146 L202 160 L196 160 Z', WOOD_D) + sP('M30 100 L30 40 Q30 18 52 18 L191 18 Q213 18 213 40 L213 100 Z', c) + sL('M121.5 26 L121.5 92', dk(c, 0.14), 1.8) + sP('M36 96 Q36 84 48 84 L116 84 Q122 84 122 92 L122 112 L36 112 Z', lt(c, 0.12)) + sP('M121 92 Q121 84 127 84 L195 84 Q207 84 207 96 L207 112 L121 112 Z', lt(c, 0.12)) + sP('M8 74 Q8 56 26 56 Q44 56 44 74 L44 142 L8 142 Z', dk(c, 0.06)) + sP('M235 74 Q235 56 217 56 Q199 56 199 74 L199 142 L235 142 Z', dk(c, 0.06)) + sP('M40 110 L203 110 L203 140 Q203 146 197 146 L46 146 Q40 146 40 140 Z', dk(c, 0.12)) + sP('M56 82 Q50 60 58 50 L96 44 Q108 44 110 56 L112 80 Q102 90 92 88 Z', CREAM) + stampMark(83, 67, 11) + sP('M150 80 Q146 64 152 56 L186 54 Q196 56 194 66 L192 82 Z', lt(c, 0.5)) + [160, 170, 180].map(x => sL(`M${x} 58 L${x - 2} 80`, lt(c, 0.25), 1.6)).join('') },
-  { id: 'f_bed', name: '포근 침대', rw: 56, vb: [252, 190], col: 'matcha', draw: c => sP('M202 26 Q202 10 218 10 Q234 10 234 26 L234 176 L202 176 Z', WOOD) + sP('M208 30 Q208 20 218 20 Q228 20 228 30 L228 92 L208 92 Z', WOOD_L, 1.6) + sP('M24 154 L30 154 L30 178 L24 178 Z', WOOD_D) + sP('M20 116 L226 116 L226 156 L20 156 Z', WOOD) + sP('M26 98 L210 98 L210 120 L26 120 Z', CREAM) + sP('M154 70 Q150 58 162 58 L200 60 Q212 62 210 74 L208 100 L156 100 Z', '#FFFFFF') + sL('M164 80 L198 80', '#EADFCB', 1.4) + sP('M24 94 Q24 84 34 84 L150 84 Q160 84 162 94 L166 138 Q96 146 22 138 Z', c) + [52, 82, 112, 140].map(x => sL(`M${x} 86 L${x + 1} 140`, lt(c, 0.35), 2)).join('') + [100, 120].map(y => sL(`M24 ${y} L162 ${y + 2}`, lt(c, 0.35), 2)).join('') + sP('M22 84 Q22 76 32 76 L152 76 Q162 76 162 84 L162 92 L22 92 Z', CREAM, 1.8) + sP('M10 92 Q10 76 24 76 Q38 76 38 92 L38 176 L10 176 Z', WOOD) + sP('M15 96 Q15 86 24 86 Q33 86 33 96 L33 132 L15 132 Z', WOOD_L, 1.6) + stampMark(218, 46, 7) },
-  { id: 'f_shelf', name: '가계부 책장', rw: 40, vb: [180, 160], col: 'butter', draw: c => sP('M14 12 L166 12 L166 152 L14 152 Z', WOOD) + sR(22, 20, 136, 38, 2, dk(WOOD_L, 0.05), 1.6) + sR(22, 68, 136, 36, 2, dk(WOOD_L, 0.05), 1.6) + sR(22, 114, 136, 32, 2, dk(WOOD_L, 0.05), 1.6) + [[26, 26, 10, 32, c], [37, 30, 9, 28, '#2F7A5B'], [47, 24, 11, 34, '#F5B5C7'], [59, 32, 8, 26, '#A6CDF0'], [68, 28, 10, 30, dk(c, 0.2)]].map(a => book(...a)).join('') + sP('M84 50 L118 50 L118 58 L84 58 Z', '#D8453B', 1.6) + sP('M86 42 L116 42 L116 50 L86 50 Z', '#2F7A5B', 1.6) + sR(126, 30, 24, 26, 2, CREAM, 1.6) + sC(138, 43, 6, '#F5B5C7', 0) + [[28, 74, 10, 30, '#BBA8E6'], [39, 78, 9, 26, c], [49, 72, 10, 32, '#2F7A5B'], [60, 76, 9, 28, '#F6DD94']].map(a => book(...a)).join('') + sP('M74 102 L108 74 L114 80 L80 104 Z', '#A6CDF0', 1.6) + sR(122, 84, 26, 20, 3, 'rgba(222,240,250,.8)', 1.6) + coin(130, 98, 4) + coin(140, 98, 4) + coin(135, 92, 4) + sR(30, 122, 30, 24, 3, c, 1.6) + stampMark(45, 134, 6) + sP('M100 146 L104 128 L124 128 L128 146 Z', '#E08E6B', 1.6) + leaf(108, 122, 7, -30, '#86B86F') + leaf(120, 120, 7, 30, '#86B86F') + sR(10, 6, 160, 8, 2, WOOD_L) + sR(18, 150, 10, 6, 1, WOOD_D, 1.6) + sR(152, 150, 10, 6, 1, WOOD_D, 1.6) },
-  { id: 'f_lamp', name: '구름 스탠드', rw: 18, vb: [81, 186], col: 'butter', draw: c => `<ellipse cx="40.5" cy="70" rx="34" ry="12" fill="#FFF2B8" opacity=".55"/>` + sL('M40.5 64 L40.5 174', OL, 5) + sL('M40.5 64 L40.5 174', WOOD, 2.6) + `<ellipse cx="40.5" cy="176" rx="20" ry="6" fill="${WOOD_D}" stroke="${OL}" stroke-width="2"/>` + sP('M12 62 Q8 50 16 44 Q14 30 28 28 Q34 16 48 20 Q62 18 64 32 Q76 36 70 50 Q76 60 66 64 Q56 70 40 66 Q24 70 12 62 Z', c) + sF('M22 38 Q30 30 40 32', lt(c, 0.5)) + sL('M22 38 Q30 30 40 32', lt(c, 0.6), 2.4) + sC(40.5, 120, 2.6, '#D8453B', 1.4) },
-  { id: 'f_dresser', name: '별빛 서랍장', rw: 36, vb: [162, 168], col: 'lavender', draw: c => sP('M22 150 L30 150 L28 164 L22 164 Z', WOOD_D) + sP('M132 150 L140 150 L140 164 L134 164 Z', WOOD_D) + sP('M14 56 L148 56 L148 150 L14 150 Z', c) + sP('M8 48 L154 48 L154 58 L8 58 Z', CREAM) + [64, 94, 124].map(y => sR(22, y, 118, 24, 3, lt(c, 0.18), 1.8) + tinyStar(81, y + 12, 5.4, '#F6CB4E') + `<path d="M${81} ${y + 6.6} L${82.7} ${y + 10.3} L${86.4} ${y + 12} L${82.7} ${y + 13.7} L${81} ${y + 17.4} L${79.3} ${y + 13.7} L${75.6} ${y + 12} L${79.3} ${y + 10.3} Z" fill="none" stroke="${OL}" stroke-width="1.2"/>`).join('') + sP('M26 46 Q26 26 46 22 Q36 34 40 46 Z', '#F6CB4E') + sC(34, 30, 1.6, '#FFFFFF', 0) + sR(98, 20, 30, 28, 3, WOOD_L, 1.8) + sR(103, 25, 20, 18, 2, '#FFFDF6', 1.4) + stampMark(113, 34, 6) },
-  { id: 'f_fridge', name: '자취 냉장고', rw: 26, price: 12, vb: [117, 190], col: 'mint', draw: c => sP('M22 172 L30 172 L30 182 L22 182 Z', '#8D8C96') + sP('M88 172 L96 172 L96 182 L88 182 Z', '#8D8C96') + sP('M12 22 Q12 8 26 8 L91 8 Q105 8 105 22 L105 166 Q105 174 97 174 L20 174 Q12 174 12 166 Z', c) + sL('M12 70 L105 70', OL, 2) + sR(88, 26, 6, 32, 3, lt(c, 0.5), 1.6) + sR(88, 82, 6, 44, 3, lt(c, 0.5), 1.6) + sF('M18 14 Q20 12 28 12 L28 66 L18 66 Z', lt(c, 0.35)) + `<path d="M34 84 L64 84 L64 130 L60 127 L56 130 L52 127 L48 130 L44 127 L40 130 L34 127 Z" fill="#FFFFFF" stroke="${OL}" stroke-width="1.6"/>` + sL('M39 94 L59 94 M39 102 L55 102 M39 110 L59 110', '#C9B79E', 1.2) + stampMark(58, 118, 5) + sC(44, 34, 6, '#F6CB4E', 1.6) + tinyStar(66, 40, 6, '#F5B5C7') + sR(56, 22, 16, 10, 2, '#FFFFFF', 1.4) },
-];
-const FURN_BY = Object.fromEntries(FURN.map(f => [f.id, f]));
-function furnSvg(id, colId) {
-  const it = FURN_BY[id];
-  if (!it) return '';
-  return `<svg viewBox="0 0 ${it.vb[0]} ${it.vb[1]}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">${it.draw(furnCol(it, colId))}</svg>`;
-}
-
-/* ================= 기분 1탭 · 기록 도장 · 꼬박방 · 주간 미션 · 회고 카드 ================= */
+/* ================= 기분 1탭 · 기록 도장 · 주간 미션 ================= */
 /* --- 기분: 지출마다 😊 만족 · 😐 보통 · 😣 아쉬움 (건너뛰어도 돼요) --- */
 const MOODS = [{ id: 'good', emo: '😊', name: '만족' }, { id: 'meh', emo: '😐', name: '보통' }, { id: 'bad', emo: '😣', name: '아쉬움' }];
 const MOOD_IDS = MOODS.map(m => m.id);
@@ -4116,8 +3890,8 @@ function moodCard(ym) {
   </section>`;
 }
 
-/* --- 기록 도장: 기록한 날 하루 1개 · 주 4일 +2 · 주간 미션 +3 (금액·건수와는 상관없어요) --- */
-const STAMP_RULE = { start: 3, day: 1, weekDays: 4, week: 2, mission: 3 };
+/* --- 기록 도장: 그날이나 다음 날까지 기록한 날에 하나씩 찍혀요 (금액·건수와는 상관없어요) --- */
+const STAMP_RULE = { weekDays: 4 };
 const weekMon = d => addDays(d, -((parseD(d).getDay() + 6) % 7));
 const dayMs = d => parseD(d).getTime();
 const inTime = (d, at) => at >= dayMs(d) && at < dayMs(d) + 2 * 864e5; // 그날 또는 다음 날까지 적은 것만
@@ -4139,10 +3913,7 @@ function stampInfo() {
   for (const d of days) { const w = weekMon(d); weeks[w] = (weeks[w] || 0) + 1; }
   const bonusWeeks = Object.keys(weeks).filter(w => weeks[w] >= STAMP_RULE.weekDays);
   const missionWeeks = Object.keys(S.room).filter(k => k.startsWith('mw_') && S.room[k]).map(k => k.slice(3)).filter(w => { const m = missionState(w); return m && m.done; });
-  let spent = 0;
-  for (const k in S.room) if (k.startsWith('mr_') && S.room[k]) spent += +S.room[k].paid || 0; // 도장으로 받은 미니룸 아이템
-  const earned = STAMP_RULE.start + days.size * STAMP_RULE.day + bonusWeeks.length * STAMP_RULE.week + missionWeeks.length * STAMP_RULE.mission;
-  stampMemo = { days, weeks, bonusWeeks: new Set(bonusWeeks), missionWeeks: new Set(missionWeeks), earned, spent, bal: earned - spent, total: days.size };
+  stampMemo = { days, weeks, bonusWeeks: new Set(bonusWeeks), missionWeeks: new Set(missionWeeks), total: days.size };
   return stampMemo;
 }
 const STAMP_SVG = '<svg class="stamp-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="7.4" fill="none" stroke="currentColor" stroke-width="1"/><text x="12" y="15.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor" font-family="sans-serif">꼬</text></svg>';
@@ -4155,7 +3926,7 @@ function stampStrip(mon) {
 }
 function weekLine(mon) {
   const n = stampInfo().weeks[mon] || 0;
-  return n >= STAMP_RULE.weekDays ? `이번 주 ${n}일 기록 · 주 4일 보너스 <b>+${STAMP_RULE.week}</b>를 받았어요` : `이번 주 <b>${STAMP_RULE.weekDays - n}일</b> 더 적으면 보너스 도장 +${STAMP_RULE.week}`;
+  return n >= STAMP_RULE.weekDays ? `이번 주 ${n}일 기록했어요 · <b>주 4일 목표</b> 달성!` : `이번 주 <b>${STAMP_RULE.weekDays - n}일</b> 더 적으면 주 4일 목표 달성이에요`;
 }
 
 /* --- 주간 미션: 결과가 아니라 행동만 (덜 쓰기 미션은 없어요) --- */
@@ -4186,13 +3957,12 @@ function missionPanel(mon, compact) {
   const st = missionState(mon);
   if (st) {
     return `<div class="mission${st.done ? ' done' : ''}"><div class="ms-h"><span class="ms-t">🎯 ${esc(st.m.name)}</span><span class="ms-p">${st.n}/${st.need}</span></div>${meter(st.n / st.need, '', true)}
-      <p class="ms-d">${st.done ? `미션 완료! 도장 <b>+${STAMP_RULE.mission}</b>을 받았어요.` : esc(st.m.desc)}</p>${!st.done && !compact && S.mode !== 'denied' ? '<button class="card-link" type="button" data-act="ms-change">다른 미션 고르기</button>' : ''}</div>`;
+      <p class="ms-d">${st.done ? '미션 완료! 이번 주도 꼼꼼하게 챙겼어요.' : esc(st.m.desc)}</p>${!st.done && !compact && S.mode !== 'denied' ? '<button class="card-link" type="button" data-act="ms-change">다른 미션 고르기</button>' : ''}</div>`;
   }
-  if (compact) return `<p class="bud-foot">🎯 이번 주 미션을 아직 안 골랐어요. 마치면 도장 +${STAMP_RULE.mission} <button class="card-link" type="button" data-act="go-room">고르러 가기</button></p>`;
-  return `<div class="mission pick"><p class="ms-q">이번 주 미션을 하나 골라요 · 마치면 도장 <b>+${STAMP_RULE.mission}</b></p><div class="ms-opts">${missionOffer(mon).map(m => `<button type="button" class="ms-opt" id="ms-${m.id}" data-act="ms-pick" data-id="${m.id}" ${S.mode === 'denied' ? 'disabled' : ''}><b>${esc(m.name)}</b><span>${esc(m.desc)}</span></button>`).join('')}</div></div>`;
+  return `<div class="mission pick"><p class="ms-q">🎯 이번 주 미션을 하나 골라요</p><div class="ms-opts">${missionOffer(mon).map(m => `<button type="button" class="ms-opt" id="ms-${m.id}" data-act="ms-pick" data-id="${m.id}" ${S.mode === 'denied' ? 'disabled' : ''}><b>${esc(m.name)}</b><span>${esc(m.desc)}</span></button>`).join('')}</div></div>`;
 }
 
-/* --- 꼬박방 데이터: meta/room 문서 하나에 모아요 --- */
+/* --- 주간 미션 고른 기록: meta/room 문서 (예전 꼬박방 데이터는 남아 있어도 쓰지 않아요) --- */
 function writeRoom(patch) {
   S.room = { ...S.room, ...patch };
   scheduleRender();
@@ -4208,402 +3978,15 @@ function writeRoom(patch) {
   }));
 }
 
-/* ================= 꼬박방: 미션 보상으로 옷·가구를 받아 꼬박이를 꾸미고 방을 꾸며요 ================= */
-// 저장: meta/room 문서 하나 (기존 저장 방식 그대로)
-//   ch { 얼굴·헤어·옷·색·이름 }                         꼬박이 모습
-//   mr_<아이템ID> { own, by, at, paid, nw, x, y, on, f, c } 받은 옷·가구, 방 안의 자리(f 좌우 반전, c 가구 색)
-//   mr_me { x, y, on, f }                               방 안의 꼬박이 자리
-const ROOM_W = 160, ROOM_H = 120, FLOOR_Y = 58, MR_CHAR_H = 42;
-const WARD_SLOTS = [['top', '상의', CH_TOPS], ['bottom', '하의', CH_BOTTOMS], ['shoes', '신발', CH_SHOES], ['head', '머리 소품', CH_HEADS], ['hand', '손에 들기', CH_HANDS], ['bag', '가방', CH_BAGS]];
-const MR_ITEMS = [
-  ...FURN.map(f => ({ id: f.id, kind: 'furn', name: f.name, price: f.price || 0 })),
-  ...WARD_SLOTS.flatMap(([slot, , list]) => list.filter(p => p.id !== 'none').map(p => ({ id: `w_${slot}_${p.id}`, kind: 'ward', slot, part: p.id, name: p.name, price: p.price || 0 }))),
-];
-const MR = Object.fromEntries(MR_ITEMS.map(i => [i.id, i]));
-const MR_START = ['f_rug']; // 처음부터 가진 가구
-// 1.16의 그림 아이템을 이미 받았다면 같은 자리의 새 아이템으로 이어 받아요
-const MR_LEGACY = { furniture_01: ['f_sofa'], furniture_02: ['f_desk'], furniture_03: ['f_bed'], furniture_04: ['f_shelf'], furniture_05: ['f_plant'], furniture_06: ['f_lamp'], furniture_07: ['f_jar'], furniture_09: ['f_dresser'],
-  character_02: ['w_top_cardigan'], character_03: ['w_head_beret'], character_04: ['w_top_pj', 'w_bottom_pj', 'w_shoes_slipper'], character_05: ['w_bottom_overall'], character_06: ['w_head_crown'] };
-const MR_FROM = {};
-for (const old in MR_LEGACY) for (const id of MR_LEGACY[old]) (MR_FROM[id] = MR_FROM[id] || []).push(old);
-const mrEnt = id => S.room['mr_' + id] || null;
-const wardId = (slot, part) => `w_${slot}_${part}`;
-const mrLocked = id => { const it = MR[id]; return !!it && !MR_START.includes(id) && (it.kind === 'furn' || it.price > 0 || !!mrRewardOf(id)); };
-const mrOwned = id => !!MR[id] && (!mrLocked(id) || !!(mrEnt(id) && mrEnt(id).own) || (MR_FROM[id] || []).some(o => S.room['mr_' + o] && S.room['mr_' + o].own));
-const chOwn = (slot, part) => part === 'none' || !MR[wardId(slot, part)] || mrOwned(wardId(slot, part));
-const itemPrice = id => { const r = mrRewardOf(id); return r ? (r.price && r.items.length === 1 ? r.price : 0) : (MR[id] ? MR[id].price : 0); };
-function chLook() {
-  const raw = S.room.ch && typeof S.room.ch === 'object' ? S.room.ch : {};
-  const a = { ...CH_DEF, name: (S.room.av && S.room.av.name) || CH_DEF.name, ...raw };
-  for (const k in CH_SLOTS) if (!CH_SLOTS[k].some(p => p.id === a[k])) a[k] = CH_DEF[k];
-  for (const [slot] of WARD_SLOTS) if (!chOwn(slot, a[slot])) a[slot] = CH_DEF[slot];
-  if (!CH_SKINS.some(c => c[0] === a.skin)) a.skin = CH_DEF.skin;
-  if (!CH_HAIRC.some(c => c[0] === a.hc)) a.hc = CH_DEF.hc;
-  for (const k of ['tc', 'bc', 'fc', 'qc']) if (!CH_COLORS.some(c => c[0] === a[k])) a[k] = CH_DEF[k];
-  a.name = String(a.name || '').trim().slice(0, 8) || CH_DEF.name;
-  a.blush = a.blush !== false;
-  return a;
-}
-function saveChLook(patch) { if (S.mode !== 'denied') writeRoom({ ch: { ...chLook(), ...patch } }); }
-// 방 안 처음 자리 (가운데 x, 바닥 y)
-const MR_LAYOUT = {
-  f_rug: { cx: 82, by: 114 }, f_sofa: { cx: 40, by: 98 }, f_bed: { cx: 126, by: 96 }, f_desk: { cx: 84, by: 108 }, f_shelf: { cx: 24, by: 74 },
-  f_dresser: { cx: 64, by: 72 }, f_lamp: { cx: 102, by: 74 }, f_jar: { cx: 14, by: 116 }, f_plant: { cx: 148, by: 117 }, f_fridge: { cx: 146, by: 68 },
-};
-const WARD_CROP = { top: [28, 90, 64, 58], bottom: [30, 124, 60, 56], shoes: [38, 154, 44, 30], head: [8, 2, 104, 72], hand: [58, 66, 58, 86], bag: [16, 92, 76, 66] };
-const artOf = id => {
-  if (id === 'me') return chSvg(chLook());
-  const it = MR[id];
-  if (!it) return '';
-  if (it.kind === 'furn') return furnSvg(id, mrEnt(id) && mrEnt(id).c);
-  return chItemSvg(it.slot, it.part, chLook());
-};
-const mrPic = (id, cls) => `<span class="mrp${cls ? ' ' + cls : ''}" data-p="${id}" aria-hidden="true">${artOf(id)}</span>`;
-function mrIsOn(id) {
-  const e = mrEnt(id);
-  if (id === 'me') return !e || e.on !== false;
-  if (!MR[id] || MR[id].kind !== 'furn' || !mrOwned(id)) return false;
-  return e && 'on' in e ? !!e.on : MR_START.includes(id);
-}
-function mrGeom(id) {
-  if (id === 'me') { const h = MR_CHAR_H; return { id: 'me', name: chLook().name, w: Math.round(h * CH_W / CH_H * 10) / 10, h, cx: 100, by: 112 }; }
-  const f = FURN_BY[id], L = MR_LAYOUT[id];
-  if (!f || !L) return null;
-  return { id, name: f.name, rug: !!f.rug, w: f.rw, h: Math.round(f.rw * f.vb[1] / f.vb[0] * 10) / 10, cx: L.cx, by: L.by };
-}
-const mrDef = g => ({ x: g.cx - g.w / 2, y: g.by - g.h });
-function clampPos(g, x, y) {
-  const lo = g.rug ? FLOOR_Y + 2 : FLOOR_Y + 8 - g.h, hi = ROOM_H - g.h - (g.rug ? 0 : 1);
-  const r = v => Math.round(v * 2) / 2;
-  return { x: r(Math.max(0, Math.min(ROOM_W - g.w, +x || 0))), y: r(Math.max(lo, Math.min(Math.max(lo, hi), +y || 0))) };
-}
-function mrPlaced() {
-  const out = [], one = id => { const g = mrGeom(id), e = mrEnt(id) || {}, d = mrDef(g); out.push({ g, ...clampPos(g, e.x ?? d.x, e.y ?? d.y), f: !!e.f }); };
-  for (const f of FURN) if (mrIsOn(f.id)) one(f.id);
-  if (mrIsOn('me')) one('me');
-  return out;
-}
-const zOf = (g, y) => (g.rug ? 1 : 10 + Math.round((y + g.h) * 2));
-const pcs = (v, of) => (v / of * 100).toFixed(3) + '%';
-const posStyle = (g, x, y) => `left:${pcs(x, ROOM_W)};top:${pcs(y, ROOM_H)};width:${pcs(g.w, ROOM_W)};height:${pcs(g.h, ROOM_H)};z-index:${zOf(g, y)}`;
-
-/* --- 방 배경: 크림 벽지 · 창문 · 가랜드 · 꿀빛 마루 (화면과 이번 주 카드가 같은 도형을 써요) --- */
-const ROOM_BG = (() => {
-  const S2 = [];
-  S2.push(['poly', '#F1DCC2', [0, 0, 14, 0, 14, 58, 0, 70]], ['poly', '#F1DCC2', [146, 0, 160, 0, 160, 70, 146, 58]], ['rect', '#FCEEDB', 14, 0, 132, 58]);
-  for (let x = 17; x < 146; x += 8) S2.push(['rect', '#F8E5CC', x, 2, 3.2, 54]);
-  S2.push(['rect', '#FFF8EE', 14, 0, 132, 2.4], ['poly', '#FFF8EE', [0, 0, 14, 0, 14, 2.4, 0, 2.9]], ['poly', '#FFF8EE', [146, 0, 160, 0, 160, 2.9, 146, 2.4]]);
-  // 창문과 커튼
-  S2.push(['rect', '#C99A6A', 91, 9, 36, 28], ['rect', '#FFFDF7', 92, 10, 34, 26], ['rect', '#CFE8F5', 94, 12, 30, 22], ['rect', '#E5F3FA', 94, 12, 30, 8],
-    ['circle', '#FFFFFF', 100, 26, 3], ['circle', '#FFFFFF', 103.5, 25, 3.6], ['circle', '#FFFFFF', 107, 26.5, 2.6], ['circle', '#FFF3C4', 118, 16.5, 2.6],
-    ['rect', '#FFFDF7', 108.4, 12, 1.2, 22], ['rect', '#FFFDF7', 94, 22.4, 30, 1.2], ['rect', '#E2BE91', 89.5, 36.6, 39, 2.2],
-    ['poly', '#CFDDBE', [87, 7, 96, 7, 94.5, 20, 91, 33, 86.5, 34]], ['poly', '#CFDDBE', [122, 7, 131, 7, 131.5, 34, 127, 33, 123.5, 20]],
-    ['poly', '#B8CCA4', [89.5, 7, 91, 7, 89.5, 33, 88.4, 33.5]], ['poly', '#B8CCA4', [127, 7, 128.6, 7, 129.6, 33.5, 128.5, 33]], ['rect', '#C99A6A', 85, 6, 48, 1.4]);
-  // 가랜드
-  const flags = ['#F6B9C4', '#FBE2A0', '#BFE0CF', '#C9BCEB', '#F6B9C4', '#FBE2A0', '#BFE0CF'];
-  const sag = x => 6 + 4 * Math.sin(Math.PI * (x - 18) / 62);
-  for (let x = 18; x < 80; x += 1.5) S2.push(['line', '#C9A27A', x, sag(x), x + 1.5, sag(x + 1.5), 0.4]);
-  flags.forEach((c, i) => { const x = 22 + i * 8.4, y = sag(x); S2.push(['poly', c, [x - 2.6, y, x + 2.6, y, x, y + 5]]); });
-  // 액자
-  S2.push(['rect', '#D9AE7C', 32, 22, 16, 13], ['rect', '#FFF8EE', 33.2, 23.2, 13.6, 10.6], ['circle', '#F6B9C4', 38, 28.5, 2.3], ['circle', '#F6B9C4', 41.6, 28.5, 2.3], ['poly', '#F6B9C4', [35.8, 29.3, 43.8, 29.3, 39.8, 33]]);
-  // 바닥 (원근감 있는 마루)
-  S2.push(['poly', '#E9BE88', [0, 70, 14, 58, 146, 58, 160, 70, 160, 120, 0, 120]]);
-  for (let i = 0; i <= 12; i++) S2.push(['line', '#DDAD76', 14 + i * 11, 58, -30 + i * 18.3, 120, 0.45]);
-  for (const y of [64, 72, 82, 95, 110]) { const t = (y - 58) / 62; S2.push(['line', '#E2B47F', 14 - 14 * t * 1.9, y, 146 + 14 * t * 1.9, y, 0.35]); }
-  S2.push(['poly', 'rgba(255,246,222,0.42)', [95, 58, 125, 58, 138, 96, 90, 96]]);
-  // 걸레받이
-  S2.push(['rect', '#FFF6EA', 14, 55.6, 132, 2.6], ['poly', '#FFF6EA', [0, 67.2, 14, 55.6, 14, 58.2, 0, 70]], ['poly', '#FFF6EA', [146, 55.6, 160, 67.2, 160, 70, 146, 58.2]],
-    ['line', '#E3C6A2', 14, 58.2, 146, 58.2, 0.4], ['line', '#E3C6A2', 0, 70, 14, 58.2, 0.4], ['line', '#E3C6A2', 146, 58.2, 160, 70, 0.4]);
-  return S2;
-})();
-const ROOM_BG_SVG = `<svg class="room-bg" viewBox="0 0 ${ROOM_W} ${ROOM_H}" preserveAspectRatio="none" aria-hidden="true" focusable="false">${ROOM_BG.map(s => {
-  if (s[0] === 'rect') return `<rect x="${s[2]}" y="${s[3]}" width="${s[4]}" height="${s[5]}" fill="${s[1]}"/>`;
-  if (s[0] === 'poly') return `<polygon points="${s[2].join(' ')}" fill="${s[1]}"/>`;
-  if (s[0] === 'circle') return `<circle cx="${s[2]}" cy="${s[3]}" r="${s[4]}" fill="${s[1]}"/>`;
-  return `<line x1="${s[2]}" y1="${s[3]}" x2="${s[4]}" y2="${s[5]}" stroke="${s[1]}" stroke-width="${s[6]}"/>`;
-}).join('')}</svg>`;
-function roomHtml(edit) {
-  const sel = S.roomSel;
-  const items = mrPlaced().map(({ g, x, y, f }) => {
-    const cls = `rm-item${g.rug ? ' rug' : ''}${g.id === 'me' ? ' me' : ''}${f ? ' flip' : ''}${edit && sel === g.id ? ' sel' : ''}`;
-    return edit
-      ? `<button type="button" class="${cls}" id="rm-${g.id}" data-act="rm-sel" data-id="${g.id}" style="${posStyle(g, x, y)}" aria-pressed="${sel === g.id}" aria-label="${esc(g.id === 'me' ? '꼬박이 ' + g.name : g.name)}">${mrPic(g.id)}</button>`
-      : `<span class="${cls}" style="${posStyle(g, x, y)}">${mrPic(g.id)}</span>`;
-  }).join('');
-  return `<span class="room${edit ? ' edit' : ''}"${edit ? ' id="room"' : ''}>${ROOM_BG_SVG}${items}</span>`;
-}
-
-/* --- 보상 미션: 가계부 습관을 마치면 아이템을 받아요 (한 번 받은 보상은 다시 주지 않아요) --- */
-const realTxs = () => allTxs().filter(t => !t.ex);
-function maxStreak() {
-  const days = [...stampInfo().days].sort();
-  let best = 0, run = 0, prev = '';
-  for (const d of days) { run = prev && addDays(prev, 1) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; }
-  return best;
-}
-function curStreak() {
-  const D = stampInfo().days, t = todayStr();
-  let d = D.has(t) ? t : addDays(t, -1), n = 0;
-  while (D.has(d) && n < 4000) { n++; d = addDays(d, -1); }
-  return n;
-}
-const noSpendCount = () => { let n = 0; const t = todayStr(); for (const ym in S.nospend) for (const d in S.nospend[ym]) if (S.nospend[ym][d] && d <= t) n++; return n; };
+/* ================= 기록 습관: 기록한 날 도장 · 주 4일 · 주간 미션 · 이번 주 돌아보기 ================= */
 const saveGoalAmt = () => +cfg().saveGoal || 0;
-function monthSaved(ym) {
-  let i = 0, o = 0;
-  for (const t of txsOf(ym)) { if (t.ex) continue; if (t.kind === 'in') i += t.amount; else if (t.kind === 'out') o += t.amount; }
-  return { in: i, out: o, saved: i - o };
-}
-function saveCheck() {
-  const goal = saveGoalAmt(), cur = ymOf(todayStr());
-  if (!(goal > 0)) return { n: 0, need: 1, goal: 0 };
-  const hit = Object.keys(S.months).filter(ym => ym < cur).sort().find(ym => { const m = monthSaved(ym); return m.in > 0 && m.saved >= goal; });
-  return { n: hit ? 1 : 0, need: 1, goal, hit, now: monthSaved(cur).saved };
-}
-const MR_REWARDS = [
-  { id: 'first', name: '첫 가계부 기록', cond: '가계부에 처음 기록하면 받아요', items: ['f_plant'], check: () => ({ n: Math.min(1, realTxs().length), need: 1 }) },
-  { id: 'streak7', name: '7일 연속 기록', cond: '7일 연속으로 기록하면 받아요. 무지출 체크도 기록이에요', items: ['w_top_pj', 'w_bottom_pj', 'w_shoes_slipper'], check: () => ({ n: Math.min(7, maxStreak()), need: 7, extra: curStreak() }) },
-  { id: 'save', name: '월간 저축 목표 달성', cond: '한 달 동안 수입 − 지출이 저축 목표 이상이면 받아요', items: ['w_head_crown', 'f_dresser'], check: saveCheck },
-  { id: 'budget', name: '한 달 예산 정하기', cond: '예산 화면에서 한 달 예산을 정하면 받아요', items: ['f_desk'], price: 4, check: () => ({ n: budgetTotal() > 0 && !cfg().budgetEx ? 1 : 0, need: 1 }) },
-  { id: 'goal', name: '모으기 목표 만들기', cond: '모으기에 목표를 하나 만들면 받아요', items: ['f_jar'], price: 4, check: () => ({ n: Math.min(1, goalsArr().filter(g => !g.ex).length), need: 1 }) },
-  { id: 'days14', name: '기록한 날 14일', cond: '그날이나 다음 날까지 기록한 날이 14일이 되면 받아요', items: ['f_sofa'], price: 10, check: () => ({ n: Math.min(14, stampInfo().total), need: 14 }) },
-  { id: 'nospend3', name: '무지출 체크 3일', cond: '‘오늘은 돈을 안 썼어요’를 3일 누르면 받아요', items: ['f_bed'], price: 8, check: () => ({ n: Math.min(3, noSpendCount()), need: 3 }) },
-  { id: 'note5', name: '세부 메모 5건', cond: '지출 5건에 세부 메모를 남기면 받아요', items: ['f_shelf'], price: 6, check: () => ({ n: Math.min(5, realTxs().filter(t => t.kind === 'out' && String(t.note || '').trim()).length), need: 5 }) },
-  { id: 'memo3', name: '쓸 돈 메모 3개 정리', cond: '쓸 돈 메모 3개를 기록으로 옮기거나 ‘안 사기로’ 정하면 받아요', items: ['f_lamp'], price: 6, check: () => ({ n: Math.min(3, memosArr().filter(m => !m.ex && (m.status === 'done' || m.status === 'drop')).length), need: 3 }) },
-  { id: 'mood10', name: '기분 10건 남기기', cond: '지출 10건에 😊😐😣 기분을 남기면 받아요', items: ['w_top_cardigan'], price: 8, check: () => ({ n: Math.min(10, realTxs().filter(t => moodable(t) && MOOD_IDS.includes(t.mood)).length), need: 10 }) },
-  { id: 'weekly1', name: '주간 미션 완료', cond: '주간 미션을 한 번 마치면 받아요', items: ['w_head_beret'], price: 10, check: () => ({ n: Math.min(1, stampInfo().missionWeeks.size), need: 1 }) },
-  { id: 'bonus3', name: '주 4일 기록 3번', cond: '한 주에 4일 이상 기록한 주가 3번이 되면 받아요', items: ['w_bottom_overall'], price: 12, check: () => ({ n: Math.min(3, stampInfo().bonusWeeks.size), need: 3 }) },
-];
-const mrRewardOf = id => MR_REWARDS.find(r => r.items.includes(id)) || null;
-const mrRewardDone = r => r.items.every(mrOwned);
-const mrTried = new Set();
-// 아직 열어 보지 않은 보상(nw)은 저장돼 있어서, 새로고침하거나 다른 기기에서 들어와도 다시 알려 줘요
-const mrNew = () => MR_ITEMS.filter(i => { const e = mrEnt(i.id); return e && e.own && e.nw; }).map(i => i.id);
-const mrReady = () => S.mode === 'local' || (S.mode === 'live' && S.definitive.meta && S.definitive.months);
-function checkRewards() {
-  if (!mrReady()) return;
-  const patch = {};
-  for (const r of MR_REWARDS) {
-    const missing = r.items.filter(id => !mrOwned(id));
-    if (!missing.length || mrTried.has(r.id)) continue;
-    const st = r.check();
-    if (st.n < st.need) continue;
-    mrTried.add(r.id); // 같은 보상은 한 번만: 이미 가진 아이템은 다시 주지 않고, 저장이 끝나기 전에 또 확인해도 건너뛰어요
-    for (const id of missing) patch['mr_' + id] = { ...(mrEnt(id) || {}), own: true, by: r.id, at: Date.now(), on: false, nw: true };
-  }
-  if (Object.keys(patch).length) writeRoom(patch);
-  announceRewards();
-}
-let mrToastT = 0;
-const mrSaid = new Set();
-function announceRewards() {
-  clearTimeout(mrToastT);
-  if (S.mode === 'denied') return;
-  const pend = mrNew();
-  if (!pend.length) return;
-  if (!$('#sheetWrap').hidden || rmDrag || (!$('#toast').hidden && toastUndo && toastUndo !== openRewardSheet)) { mrToastT = setTimeout(announceRewards, 1500); return; } // 다른 일을 하는 중이면 잠깐 기다려요
-  if (S.view === 'room') { openRewardSheet(); return; }
-  if (pend.every(id => mrSaid.has(id))) return; // 알림은 한 번만. 한눈에 카드에는 열어 볼 때까지 남아 있어요
-  pend.forEach(id => mrSaid.add(id));
-  const it = MR[pend[0]];
-  toast(`🎁 보상 도착! ${it.name}${pend.length > 1 ? ` 외 ${pend.length - 1}개` : ''}`, { undo: openRewardSheet, label: '열어 보기', ms: 8000 });
-}
-function openRewardSheet() {
-  const list = mrNew();
-  if (!list.length || !$('#sheetWrap').hidden) return;
-  if (toastUndo === openRewardSheet) hideToast();
-  F = { mode: 'reward', list };
-  showSheet(rewardSheet());
-  const patch = {};
-  for (const id of list) patch['mr_' + id] = { ...mrEnt(id), nw: false };
-  writeRoom(patch);
-}
-const isWorn = id => { const it = MR[id]; return !!it && it.kind === 'ward' && chLook()[it.slot] === it.part; };
-function rewardSheet() {
-  const list = F.list, dis = S.mode === 'denied';
-  return `<div class="reward-sheet">
-    <div class="sheet-h"><h2 id="sheetTitle">🎁 보상이 도착했어요</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
-    <div class="rw-list">${list.map(id => {
-      const it = MR[id], r = mrRewardOf(id), ward = it.kind === 'ward';
-      const done = ward ? isWorn(id) : mrIsOn(id);
-      return `<div class="rw-it"><span class="rw-pic">${mrPic(id)}</span><b>${esc(it.name)}</b><small>${r ? esc(r.name) + ' 미션 완료' : '보상'}</small>
-        <button class="btn ${done ? 'btn-soft' : 'btn-primary'} btn-sm" type="button" id="rw-${id}" data-act="${ward ? 'mr-wear' : 'mr-place'}" data-id="${id}" ${done || dis ? 'disabled' : ''}>${ward ? (done ? '입고 있어요' : '입어 보기') : (done ? '방에 있어요' : '방에 놓기')}</button></div>`;
-    }).join('')}</div>
-    <div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">닫기</button><button class="btn btn-primary btn-block" type="button" id="rw-go" data-act="rw-go">꼬박방에서 보기</button></div>
-  </div>`;
-}
-function grantByStamp(rid) {
-  const r = MR_REWARDS.find(x => x.id === rid);
-  if (!r || !r.price || S.mode === 'denied' || mrRewardDone(r)) return;
-  buyItem(r.items[0], r.price);
-}
-// 도장으로 들이기: 옷은 바로 입혀 보고, 되돌리기를 누르면 도장과 원래 모습이 돌아와요
-function buyItem(id, price = itemPrice(id)) {
-  const it = MR[id];
-  if (!it || !price || S.mode === 'denied' || mrOwned(id)) return;
-  const bal = stampInfo().bal;
-  if (bal < price) { toast(`‘${it.name}’${josa(it.name, '은/는').slice(-1)} 도장 ${price}개예요. ${price - bal}개 더 모으면 받을 수 있어요`); return; }
-  const k = 'mr_' + id, prev = S.room.ch || null, patch = { [k]: { ...(mrEnt(id) || {}), own: true, by: 'stamp', paid: price, at: Date.now(), on: false } };
-  if (it.kind === 'ward') patch.ch = { ...chLook(), [it.slot]: it.part };
-  writeRoom(patch);
-  toast(`‘${it.name}’${josa(it.name, '을/를').slice(-1)} 도장 ${price}개로 받았어요`, { undo: () => writeRoom({ [k]: null, ...(it.kind === 'ward' ? { ch: prev } : {}) }) });
-}
-function lockedHint(id) {
-  const it = MR[id], r = mrRewardOf(id), price = itemPrice(id), bal = Math.max(0, stampInfo().bal);
-  if (r && !price) return `‘${it.name}’${josa(it.name, '은/는').slice(-1)} ${r.name} 미션 보상이에요. ${r.cond}`;
-  if (r) return `‘${it.name}’${josa(it.name, '은/는').slice(-1)} ${r.name} 미션 보상이에요. 도장 ${price}개로 먼저 받을 수도 있어요${bal < price ? ` (${price - bal}개 더 필요)` : ''}`;
-  return `‘${it.name}’${josa(it.name, '은/는').slice(-1)} 도장 ${price}개로 들일 수 있어요${bal < price ? `. ${price - bal}개 더 모아 봐요` : ''}`;
-}
-
-/* --- 배치 · 회수 · 캐릭터 바꾸기 --- */
-function saveRoomPos(id, x, y) {
-  const g = mrGeom(id);
-  if (!g || S.mode === 'denied') return;
-  const p = clampPos(g, x, y), cur = mrEnt(id) || {};
-  if (cur.on && cur.x === p.x && cur.y === p.y) return;
-  writeRoom({ ['mr_' + id]: { ...cur, x: p.x, y: p.y, on: true } });
-}
-function placeItem(id) {
-  if (S.mode === 'denied' || (id !== 'me' && !mrOwned(id))) return;
-  const g = mrGeom(id), cur = mrEnt(id) || {}, d = mrDef(g);
-  writeRoom({ ['mr_' + id]: { ...cur, x: cur.x ?? d.x, y: cur.y ?? d.y, on: true } });
-  S.roomSel = id;
-}
-function storeItem(id) {
-  if (S.mode === 'denied') return;
-  writeRoom({ ['mr_' + id]: { ...(mrEnt(id) || {}), on: false } });
-  if (S.roomSel === id) S.roomSel = null;
-}
-function flipItem(id) {
-  if (S.mode === 'denied' || !mrIsOn(id)) return;
-  const cur = mrEnt(id) || {}, g = mrGeom(id), d = mrDef(g);
-  writeRoom({ ['mr_' + id]: { ...cur, x: cur.x ?? d.x, y: cur.y ?? d.y, on: true, f: !cur.f } });
-}
-function wearItem(id) {
-  const it = MR[id];
-  if (S.mode === 'denied' || !it || it.kind !== 'ward' || !mrOwned(id)) return;
-  saveChLook({ [it.slot]: it.part });
-}
-function setFurnColor(id, c) {
-  if (S.mode === 'denied' || !mrIsOn(id)) return;
-  const cur = mrEnt(id) || {}, g = mrGeom(id), d = mrDef(g);
-  writeRoom({ ['mr_' + id]: { ...cur, x: cur.x ?? d.x, y: cur.y ?? d.y, on: true, c } });
-}
-
-/* --- 꼬박방 화면 --- */
-function mrProgress(r) {
-  const st = r.check(), done = mrRewardDone(r);
-  let note = '';
-  if (r.id === 'save') note = st.goal ? `이번 달 지금까지 ${st.now >= 0 ? '+' : '−'}${won(Math.abs(st.now))} · 목표 ${won(st.goal)} (달이 끝나면 확인해요)` : '먼저 한 달 저축 목표를 정해 주세요';
-  else if (r.id === 'streak7' && !done) note = `지금 ${st.extra}일째 · 가장 길게 ${st.n}일`;
-  return { st, done, note };
-}
-function mrCondHtml(r, compact) {
-  const { st, done, note } = mrProgress(r), bal = Math.max(0, stampInfo().bal);
-  if (done) return '<span class="mr-done">✓ 받았어요</span>';
-  return `<span class="mr-cond">${esc(r.cond)}</span>${meter(st.n / st.need, '', true)}<span class="mr-prog">${st.n}/${st.need}${note ? ` · ${esc(note)}` : ''}</span>
-    ${!compact && r.id === 'save' && S.mode !== 'denied' ? `<button class="btn btn-soft btn-sm" type="button" data-act="mr-savegoal">${saveGoalAmt() ? '저축 목표 바꾸기' : '저축 목표 정하기'}</button>` : ''}
-    ${r.price && S.mode !== 'denied' ? `<button class="btn btn-soft btn-sm mr-buy" type="button" id="${compact ? 'mrb' : 'mrbm'}-${r.id}" data-act="mr-buy" data-id="${r.id}" ${bal >= r.price ? '' : 'disabled'} aria-label="도장 ${r.price}개로 바로 받기">${STAMP_SVG}${compact ? `${r.price}개로 받기` : `${r.price}개로 바로 받기`}</button>` : ''}`;
-}
-/* --- 꼬박이 꾸미기: 얼굴·헤어는 모두 무료, 옷·소품은 미션 보상이나 도장으로 --- */
-const CH_TABS = [['face', '얼굴'], ['hair', '헤어'], ['top', '상의'], ['bottom', '하의'], ['shoes', '신발'], ['acc', '소품']];
-const CH_CROP = { face: [26, 46, 68, 44], hair: [2, 4, 116, 112] };
-function studioCard() {
-  const a = chLook(), tab = CH_TABS.some(t => t[0] === S.chTab) ? S.chTab : 'face', dis = S.mode === 'denied' ? 'disabled' : '';
-  const opts = (slot, label, crop) => `<p class="av-lab">${label}</p><div class="av-opts">${CH_SLOTS[slot].map(p => {
-    const wid = wardId(slot, p.id), ward = !!MR[wid], own = !ward || chOwn(slot, p.id), on = a[slot] === p.id, price = ward ? itemPrice(wid) : 0, r = ward ? mrRewardOf(wid) : null;
-    const tag = own ? '' : price ? `<span class="av-p">${STAMP_SVG}${price}</span>` : '<span class="av-p gift" aria-hidden="true">🎁</span>';
-    return `<button type="button" class="av-opt${own ? '' : ' lock'}" id="cho-${slot}-${p.id}" data-act="ch-pick" data-slot="${slot}" data-id="${p.id}" aria-pressed="${on}" ${dis} aria-label="${esc(p.name)}${own ? '' : r ? `, ${esc(r.name)} 미션 보상` : `, 도장 ${price}개`}"><span class="av-thumb">${p.id === 'none' ? '<span class="av-none">없음</span>' : chSvg({ ...a, [slot]: p.id }, crop || WARD_CROP[slot])}</span><span class="av-n">${esc(p.name)}</span>${tag}</button>`;
-  }).join('')}</div>`;
-  const sws = (key, list, label) => `<p class="av-lab">${label}</p><div class="av-sws" role="group" aria-label="${label}">${list.map(c => `<button type="button" class="av-sw" id="chs-${key}-${c[0]}" data-act="ch-color" data-key="${key}" data-id="${c[0]}" aria-pressed="${a[key] === c[0]}" aria-label="${esc(c[1])}" title="${esc(c[1])}" style="--sw:${c[2]}" ${dis}></button>`).join('')}</div>`;
-  let body = '';
-  if (tab === 'face') body = sws('skin', CH_SKINS, '피부') + opts('eyes', '눈', CH_CROP.face) + opts('mouth', '입', CH_CROP.face) + opts('brows', '눈썹', CH_CROP.face) + `<div class="switch-row av-blush"><div><span class="card-t">볼터치</span></div><button class="switch" type="button" role="switch" id="ch-blush" aria-checked="${a.blush}" data-act="ch-blush" aria-label="볼터치" ${dis}></button></div>`;
-  else if (tab === 'hair') body = opts('hair', '헤어스타일', CH_CROP.hair) + sws('hc', CH_HAIRC, '머리색');
-  else if (tab === 'top') body = opts('top', '상의') + sws('tc', CH_COLORS, '상의 색');
-  else if (tab === 'bottom') body = opts('bottom', '하의') + sws('bc', CH_COLORS, '하의 색');
-  else if (tab === 'shoes') body = opts('shoes', '신발') + sws('fc', CH_COLORS, '신발 색');
-  else body = opts('head', '머리 소품') + opts('hand', '손에 들기') + opts('bag', '가방') + sws('qc', CH_COLORS, '소품 색');
-  const owned = MR_ITEMS.filter(i => i.kind === 'ward' && mrLocked(i.id) && mrOwned(i.id)).length, all = MR_ITEMS.filter(i => i.kind === 'ward' && mrLocked(i.id)).length;
-  return `<section class="card ava-card" id="studio">
-    <div class="card-h"><h2 class="card-t">꼬박이 꾸미기</h2><span class="muted" style="font-size:13px">모은 옷·소품 ${owned}/${all}</span></div>
-    <div class="av-top"><div class="av-stage" role="img" aria-label="${esc(a.name)}, 지금 모습">${chSvg(a)}</div>
-      <div class="av-meta"><label class="lab" for="ch-name">이름</label><input class="input" id="ch-name" maxlength="8" value="${esc(a.name)}" autocomplete="off" ${dis}>
-      <p class="amt-hint">얼굴·헤어·색은 모두 마음대로 바꿔요. 🎁 표시 옷은 미션 보상, 도장 표시는 도장으로 들여요.</p>
-      <button class="btn btn-soft btn-sm" type="button" data-act="ch-random" ${dis}>🎲 랜덤 코디</button>
-      ${!mrIsOn('me') && S.mode !== 'denied' ? '<button class="card-link" type="button" data-act="mr-place" data-id="me">방에 다시 놓기</button>' : ''}</div></div>
-    <div class="seg av-tabs" role="group" aria-label="꾸밀 곳">${CH_TABS.map(([v, n]) => `<button type="button" id="cht-${v}" data-act="ch-tab" data-v="${v}" aria-pressed="${tab === v}">${n}</button>`).join('')}</div>
-    <div class="av-body">${body}</div>
-  </section>`;
-}
-function randomLook() {
-  const a = chLook(), pick = arr => arr[Math.floor(Math.random() * arr.length)], next = { ...a };
-  for (const [slot] of WARD_SLOTS) { const own = CH_SLOTS[slot].filter(p => chOwn(slot, p.id)); next[slot] = pick(slot === 'hand' || slot === 'bag' || slot === 'head' ? own.concat(own.filter(p => p.id === 'none')) : own).id; }
-  for (const k of ['tc', 'bc', 'fc', 'qc']) next[k] = pick(CH_COLORS)[0];
-  next.eyes = pick(CH_EYES).id; next.mouth = pick(CH_MOUTHS).id;
-  saveChLook(next);
-}
-function furnCard() {
-  const dis = S.mode === 'denied' ? 'disabled' : '', bal = Math.max(0, stampInfo().bal);
-  const tiles = FURN.map(f => {
-    const id = f.id, own = mrOwned(id), on = own && mrIsOn(id), r = mrRewardOf(id), price = itemPrice(id);
-    const lockInfo = r ? mrCondHtml(r, true) : `<span class="mr-cond">도장으로 들이는 가구예요</span><button class="btn btn-soft btn-sm mr-buy" type="button" id="mrbi-${id}" data-act="mr-buyi" data-id="${id}" ${bal >= price && !dis ? '' : 'disabled'} aria-label="도장 ${price}개로 들이기">${STAMP_SVG}${price}개로 들이기</button>`;
-    return `<div class="mr-tile${own ? ' own' : ' locked'}"><span class="mr-thumb">${mrPic(id, own ? '' : 'lock')}${own ? '' : '<span class="mr-lock" aria-hidden="true">🔒</span>'}</span><span class="mr-name">${esc(f.name)}</span>
-      ${own ? `<span class="mr-state">${on ? '방에 있어요' : '보관함에 있어요'}</span><button class="btn btn-sm ${on ? 'btn-ghost' : 'btn-primary'}" type="button" id="mrf-${id}" data-act="${on ? 'mr-store' : 'mr-place'}" data-id="${id}" ${dis}>${on ? '넣어 두기' : '방에 놓기'}</button>` : lockInfo}</div>`;
-  }).join('');
-  return `<section class="card mr-card"><div class="card-h"><h2 class="card-t">가구 보관함</h2><span class="muted" style="font-size:13px">${FURN.filter(f => mrOwned(f.id)).length}/${FURN.length}</span></div>
-    <div class="mr-grid">${tiles}</div><p class="bud-foot">방에 놓은 가구는 끌어서 옮겨요. 누르면 색 바꾸기·좌우 반전·넣어 두기를 쓸 수 있어요.</p></section>`;
-}
-function rewardsCard() {
-  const rows = MR_REWARDS.map(r => ({ r, p: mrProgress(r) })).sort((a, b) => (a.p.done - b.p.done) || (b.p.st.n / b.p.st.need - a.p.st.n / a.p.st.need));
-  return `<section class="card"><div class="card-h"><h2 class="card-t">보상 미션</h2><span class="muted" style="font-size:13px">${MR_REWARDS.filter(mrRewardDone).length}/${MR_REWARDS.length} 완료</span></div>
-    <div class="rw-missions">${rows.map(({ r, p }) => `<div class="rwm${p.done ? ' done' : ''}" id="rwm-${r.id}"><span class="rwm-pics">${r.items.map(id => mrPic(id, mrOwned(id) ? '' : 'lock')).join('')}</span>
-      <div class="rwm-main"><b>${esc(r.name)}</b><span class="rwm-items">${r.items.map(id => esc(MR[id].name)).join(' · ')}</span>${mrCondHtml(r, false)}</div></div>`).join('')}</div>
-    <p class="bud-foot">한 번 받은 보상은 기록을 지워도 사라지지 않고, 같은 보상을 두 번 받지 않아요.</p></section>`;
-}
-function stampLog() {
-  const I = stampInfo(), t = todayStr();
-  const rows = [];
-  for (let i = 0; i < 4; i++) {
-    const mon = addDays(weekMon(t), -7 * i), n = I.weeks[mon] || 0, b = I.bonusWeeks.has(mon) ? STAMP_RULE.week : 0, ms = I.missionWeeks.has(mon) ? STAMP_RULE.mission : 0;
-    rows.push(`<tr><td>${i === 0 ? '이번 주' : `${mdLabel(mon)}~`}</td><td>${n}일</td><td>${b ? '+' + b : '–'}</td><td>${ms ? '+' + ms : '–'}</td><td><b>${n + b + ms}</b></td></tr>`);
-  }
-  return `<div class="tbl-wrap"><table class="tbl stamp-tbl"><caption class="sr-only">최근 4주 도장</caption><thead><tr><th scope="col">주</th><th scope="col">기록한 날</th><th scope="col">주 4일</th><th scope="col">미션</th><th scope="col">도장</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
-    <p class="bud-foot">지금까지 받은 도장 ${I.earned}개(시작 선물 ${STAMP_RULE.start}개 포함) · 아이템에 쓴 도장 ${I.spent}개</p>`;
-}
-function vRoom() {
-  const I = stampInfo(), t = todayStr(), mon = weekMon(t);
-  const head = `<div class="view-h"><h1 class="view-title">꼬박방</h1><span class="stamp-bal" title="쓸 수 있는 도장">${STAMP_SVG}<b>${Math.max(0, I.bal)}</b>개</span></div>`;
-  if (isLoading()) return head + `<section class="card">${emptyBox('불러오는 중이에요', '')}</section>`;
-  const edit = S.mode !== 'denied';
-  const sel = S.roomSel && mrGeom(S.roomSel) && mrIsOn(S.roomSel) ? S.roomSel : null;
-  const g = sel && mrGeom(sel);
-  const nudge = [[-1, 0, 'left', '왼쪽'], [0, -1, 'up', '위'], [0, 1, 'down', '아래'], [1, 0, 'right', '오른쪽']];
-  const tools = g
-    ? `<div class="rm-tools" role="group" aria-label="${esc(g.name)} 옮기기"><span class="rm-sel-name">${mrPic(sel, 'rm-sel-pic')}${esc(sel === 'me' ? g.name : g.name)}</span><span class="rm-arrows">${nudge.map(([dx, dy, ic, n]) => `<button class="icon-btn" type="button" data-act="rm-nudge" data-dx="${dx}" data-dy="${dy}" aria-label="${n}으로 옮기기">${icon(ic)}</button>`).join('')}</span><button class="btn btn-ghost btn-sm" type="button" data-act="rm-flip" data-id="${sel}">좌우 반전</button><button class="btn btn-ghost btn-sm" type="button" data-act="mr-store" data-id="${sel}">넣어 두기</button><button class="btn btn-soft btn-sm" type="button" data-act="rm-done">다 했어요</button>${sel === 'me' ? `<button class="card-link rm-colors" type="button" data-act="ch-go">옷 갈아입히기${icon('right')}</button>` : `<div class="av-sws rm-colors" role="group" aria-label="${esc(g.name)} 색">${FURN_COLS.map(c => `<button type="button" class="av-sw" id="rmc-${c[0]}" data-act="rm-color" data-id="${sel}" data-c="${c[0]}" aria-pressed="${furnCol(FURN_BY[sel], (mrEnt(sel) || {}).c) === c[2]}" aria-label="${esc(c[1])}" title="${esc(c[1])}" style="--sw:${c[2]}"></button>`).join('')}</div>`}</div>`
-    : `<p class="rm-hint">${edit ? '가구와 꼬박이를 끌어서 옮겨요. 누르면 화살표·색·좌우 반전·넣어 두기를 쓸 수 있어요.' : '이 방은 만든 사람만 꾸밀 수 있어요.'}</p>`;
-  const stage = `<section class="card room-card">${roomHtml(edit)}${tools}<div class="rv-acts"><button class="btn btn-soft btn-sm" type="button" data-act="week-card">${icon('down', 'sm')}이번 주 카드 저장</button><span class="muted rv-note">금액은 담기지 않아요</span></div></section>`;
-  const week = `<section class="card"><div class="card-h"><h2 class="card-t">이번 주 도장</h2><span class="muted" style="font-size:13px">${mdLabel(mon)} ~ ${mdLabel(addDays(mon, 6))}</span></div>
-    ${stampStrip(mon)}<p class="bud-foot">${!I.total && hasExamples() ? '예시 기록에는 도장이 찍히지 않아요. 내 기록을 남기면 그날 도장을 받아요.' : weekLine(mon)}</p>
-    ${missionPanel(mon, false)}</section>`;
-  const rules = `<section class="card"><div class="card-h"><h2 class="card-t">도장 받는 법</h2></div>
-    <ul class="report-list rules">
-      <li>그날이나 다음 날까지 적은 기록이 있으면 <b>하루 1개</b>예요. 무지출 체크도 돼요.</li>
-      <li>한 주(월~일)에 <b>4일 이상</b> 적으면 <b>+${STAMP_RULE.week}</b>개를 더 받아요. 하루 빠져도 괜찮아요.</li>
-      <li>고른 <b>주간 미션</b>을 마치면 <b>+${STAMP_RULE.mission}</b>개예요.</li>
-      <li>도장으로 옷·소품·가구를 들이거나 일부 보상을 미션보다 먼저 받을 수 있어요.</li>
-      <li>금액이나 건수는 상관없어요. 적게 썼다고 더 주지 않아요. 솔직하게 적는 게 제일 중요해요.</li>
-      <li>예시 기록과 자동으로 들어온 정기결제·대출은 세지 않아요.</li>
-    </ul>${stampLog()}</section>`;
-  return head + `<div class="cols"><div class="col">${stage}${studioCard()}${furnCard()}</div><div class="col">${rewardsCard()}${week}${rules}</div></div>`;
-}
-
 /* --- 한 달 저축 목표 --- */
 function openSaveGoalSheet() {
   if (S.mode === 'denied') return;
   F = { mode: 'savegoal', amount: saveGoalAmt() };
   showSheet(`<form id="sgForm" autocomplete="off" novalidate>
     <div class="sheet-h"><h2 id="sheetTitle">한 달 저축 목표</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
-    <p class="sheet-note">한 달 동안 <b>수입 − 지출</b>이 이 금액 이상이면 ‘월간 저축 목표 달성’ 미션을 마쳐요. 달이 끝난 뒤 확인해요.</p>
+    <p class="sheet-note">한 달 동안 <b>수입 − 지출</b>이 만큼은 쓰지 않고 남길 돈이에요. ‘쓸 수 있는 돈’을 계산할 때 이 금액을 먼저 빼 둬요.</p>
     <div class="field"><label class="lab" for="sg-amount">한 달에 남길 돈</label><div class="amt"><input id="sg-amount" inputmode="numeric" placeholder="0" value="${F.amount ? fmt(F.amount) : ''}"><span>원</span></div>
       <div class="quick">${[[100000, '10만'], [300000, '30만'], [500000, '50만'], [1000000, '100만']].map(([v, l]) => `<button class="chip" type="button" data-act="sg-set" data-v="${v}">${l}</button>`).join('')}</div></div>
     <div class="sheet-actions"><button class="btn btn-primary btn-block" type="submit" id="sg-save" ${F.amount > 0 ? '' : 'disabled'}>저장하기</button></div>
@@ -4617,22 +4000,19 @@ function saveSaveGoal() {
   toast(`한 달 저축 목표를 ${won(v)}으로 정했어요`);
 }
 
-/* --- 한눈에: 꼬박 도장 카드 · 이번 주 돌아보기 --- */
-function homeStampCard() {
-  const h = habitStats(), t = todayStr(), mon = weekMon(t), I = stampInfo(), n = I.weeks[mon] || 0;
-  const todayBtn = h.todayOut ? `<p class="bud-foot">${I.days.has(t) ? '오늘 도장을 받았어요. 내일도 꼬박꼬박!' : '오늘 기록이 있어요. 내일도 꼬박꼬박 적어 봐요.'}</p>`
+/* --- 한눈에: 기록 습관 카드 --- */
+function habitCard() {
+  const h = habitStats(), t = todayStr(), mon = weekMon(t), I = stampInfo(), n = I.weeks[mon] || 0, ym = ymOf(t);
+  const monthDays = [...I.days].filter(d => d.startsWith(ym)).length;
+  const todayBtn = h.todayOut ? `<p class="bud-foot">${I.days.has(t) ? '오늘 기록했어요. 내일도 꼬박꼬박!' : '오늘 기록이 있어요. 내일도 꼬박꼬박 적어 봐요.'}</p>`
     : h.todayMarked ? `<p class="bud-foot">오늘은 무지출로 체크했어요. <button class="card-link" type="button" data-act="nospend" data-date="${t}" data-on="0">체크 취소</button></p>`
     : `<div class="habit-acts"><button class="btn btn-soft btn-sm" type="button" data-act="nospend" data-date="${t}" data-on="1" ${S.mode === 'denied' ? 'disabled' : ''}>오늘은 돈을 안 썼어요</button><button class="btn btn-ghost btn-sm" type="button" data-act="add">${icon('plus')}오늘 기록하기</button></div>`;
-  const next = MR_REWARDS.filter(r => !mrRewardDone(r)).map(r => ({ r, s: r.check() })).sort((a, b) => b.s.n / b.s.need - a.s.n / a.s.need)[0];
-  return `<section class="card stamp-card" data-o="4">
-    <div class="card-h"><h2 class="card-t">꼬박 도장</h2><button class="card-link" type="button" data-act="go-room">꼬박방${icon('right')}</button></div>
-    <button class="room-mini" type="button" data-act="go-room" aria-label="꼬박방 보러 가기">${roomHtml(false)}</button>
+  return `<section class="card stamp-card" data-o="4" id="habitCard">
+    <div class="card-h"><h2 class="card-t">기록 습관</h2></div>
     ${stampStrip(mon)}
-    <div class="habit-row three"><div><span class="stat-l">이번 주</span><span class="habit-num">${n}<small>/7일</small></span></div><div><span class="stat-l">모은 도장</span><span class="habit-num">${Math.max(0, I.bal)}<small>개</small></span></div><div><span class="stat-l">이번 달 무지출</span><span class="habit-num">${h.noSpendMonth}<small>일</small></span></div></div>
-    <p class="bud-foot">${!I.total && hasExamples() ? '예시 기록에는 도장이 찍히지 않아요. 내 기록을 남기면 그날 도장을 받아요.' : weekLine(mon)}</p>
-    ${mrNew().length ? `<button class="mr-gift" type="button" id="mr-gift" data-act="rw-open">🎁 열어 보지 않은 보상 <b>${mrNew().length}개</b><span>열어 보기${icon('right')}</span></button>` : ''}
-    ${next ? `<p class="bud-foot mr-next">${mrPic(next.r.items[0], 'lock')}<span>다음 보상 <b>${esc(MR[next.r.items[0]].name)}</b> · ${esc(next.r.name)} ${next.s.n}/${next.s.need}</span></p>` : ''}
-    ${missionPanel(mon, true)}
+    <div class="habit-row three"><div><span class="stat-l">이번 주</span><span class="habit-num">${n}<small>/7일</small></span></div><div><span class="stat-l">이번 달 기록한 날</span><span class="habit-num">${monthDays}<small>일</small></span></div><div><span class="stat-l">이번 달 무지출</span><span class="habit-num">${h.noSpendMonth}<small>일</small></span></div></div>
+    <p class="bud-foot">${!I.total && hasExamples() ? '예시 기록에는 도장이 찍히지 않아요. 내 기록을 남기면 그날 도장이 찍혀요.' : weekLine(mon)}</p>
+    ${missionPanel(mon, false)}
     ${todayBtn}
   </section>`;
 }
@@ -4651,117 +4031,9 @@ function weekReviewBits(mon, t) {
     const cid = Object.entries(by).sort((a, b) => b[1] - a[1])[0][0], c = catOf(cid);
     sug = `<p class="rv-sug">다음 주엔 ${esc(c.emoji)} <b>${esc(c.name)}</b> 지출을 쓸 돈 메모로 먼저 적어 볼까요? <button class="card-link" type="button" data-act="rv-memo" data-cat="${esc(cid)}" ${S.mode === 'denied' ? 'disabled' : ''}>메모 쓰기</button></p>`;
   }
-  const acts = `<div class="rv-acts">${M.untagged.length && S.mode !== 'denied' ? `<button class="btn btn-soft btn-sm" type="button" data-act="mood-batch" data-from="${mon}" data-to="${t}" data-t="이번 주">😊😐😣 기분 남기기 <small class="muted">${M.untagged.length}건</small></button>` : ''}<button class="btn btn-ghost btn-sm" type="button" data-act="week-card">${icon('down', 'sm')}이번 주 카드 저장</button></div>`;
+  const acts = M.untagged.length && S.mode !== 'denied' ? `<div class="rv-acts"><button class="btn btn-soft btn-sm" type="button" data-act="mood-batch" data-from="${mon}" data-to="${t}" data-t="이번 주">😊😐😣 기분 남기기 <small class="muted">${M.untagged.length}건</small></button></div>` : '';
   return { M, lines, html: badList + sug + acts };
 }
-
-/* --- 이번 주 카드 (PNG): 미니룸 + 도장 + 기분, 금액은 넣지 않아요 --- */
-const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-// 방 전체를 SVG 한 장으로 만들어요 (카드 그림 · 화면과 같은 도형)
-function roomSvgFull(px) {
-  const bg = ROOM_BG_SVG.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
-  const items = mrPlaced().sort((a, b) => zOf(a.g, a.y) - zOf(b.g, b.y)).map(({ g, x, y, f }) => {
-    const art = artOf(g.id).replace('<svg ', `<svg x="0" y="0" width="${g.w}" height="${g.h}" `);
-    const shadow = g.rug ? '' : `<ellipse cx="${(x + g.w / 2).toFixed(2)}" cy="${(y + g.h * 0.98).toFixed(2)}" rx="${(g.w * 0.36).toFixed(2)}" ry="${Math.max(0.8, g.h * 0.045).toFixed(2)}" fill="rgba(96,58,30,.2)"/>`;
-    return shadow + `<g transform="translate(${f ? x + g.w : x} ${y})${f ? ' scale(-1 1)' : ''}">${art}</g>`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ROOM_W} ${ROOM_H}" width="${px}" height="${px * ROOM_H / ROOM_W}" preserveAspectRatio="none">${bg}${items}</svg>`;
-}
-async function drawRoom(ctx, ox, oy, k) {
-  try {
-    const img = await loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(roomSvgFull(Math.round(ROOM_W * k))));
-    ctx.drawImage(img, ox, oy, ROOM_W * k, ROOM_H * k);
-  } catch (e) { ctx.fillStyle = '#FCEEDB'; ctx.fillRect(ox, oy, ROOM_W * k, ROOM_H * k); }
-}
-function drawStamp(ctx, cx, cy, r, col) {
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.2); ctx.strokeStyle = col; ctx.fillStyle = col;
-  ctx.lineWidth = r * 0.17; ctx.beginPath(); ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2); ctx.stroke();
-  ctx.lineWidth = r * 0.08; ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2); ctx.stroke();
-  ctx.font = `700 ${Math.round(r * 0.8)}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('꼬', 0, r * 0.04);
-  ctx.restore();
-}
-async function saveWeekCard() {
-  const t = todayStr(), mon = weekMon(t), sun = addDays(mon, 6), I = stampInfo(), n = I.weeks[mon] || 0, st = missionState(mon);
-  const M = moodSum(allTxs().filter(x => x.date >= mon && x.date <= t));
-  const got = n * STAMP_RULE.day + (n >= STAMP_RULE.weekDays ? STAMP_RULE.week : 0) + (st && st.done ? STAMP_RULE.mission : 0);
-  const W = 1080, H = 1350, c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const ctx = c.getContext('2d'), FONT = getComputedStyle(document.body).fontFamily || 'sans-serif';
-  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { /* ignore */ }
-  ctx.fillStyle = '#FFF8EC'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#3D2E2A'; ctx.font = `700 58px ${FONT}`; ctx.textBaseline = 'alphabetic'; ctx.fillText('이번 주 꼬박꼬박', 80, 132);
-  ctx.fillStyle = '#8A7466'; ctx.font = `500 34px ${FONT}`; ctx.fillText(`${mdLabel(mon)} ~ ${mdLabel(sun)}`, 80, 186);
-  ctx.save(); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(80, 232, 920, 690, 28) : ctx.rect(80, 232, 920, 690); ctx.clip();
-  await drawRoom(ctx, 80, 232, 920 / ROOM_W);
-  ctx.restore();
-  ctx.font = `600 30px ${FONT}`; ctx.textAlign = 'center';
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(mon, i), cx = 80 + 66 + i * 131;
-    ctx.fillStyle = '#8A7466'; ctx.fillText(WD[i], cx, 990);
-    ctx.strokeStyle = '#E8D9C4'; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(cx, 1052, 44, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-    if (I.days.has(d)) drawStamp(ctx, cx, 1052, 50, '#D8453B');
-  }
-  ctx.textAlign = 'left';
-  const stat = (x, lab, val) => { ctx.fillStyle = '#8A7466'; ctx.font = `500 28px ${FONT}`; ctx.fillText(lab, x, 1170); ctx.fillStyle = '#3D2E2A'; ctx.font = `700 46px ${FONT}`; ctx.fillText(val, x, 1226); };
-  stat(80, '기록한 날', `${n} / 7일`);
-  stat(390, '받은 도장', `+${got}개`);
-  stat(680, '기분', M.tagged ? `😊${M.cnt.good} 😐${M.cnt.meh} 😣${M.cnt.bad}` : '–');
-  ctx.fillStyle = '#B29A88'; ctx.font = `500 26px ${FONT}`; ctx.textAlign = 'right'; ctx.fillText('꼬박꼬박 가계부', W - 80, H - 60);
-  let blob = null;
-  try { blob = await new Promise(r => c.toBlob(r, 'image/png')); } catch (e) { blob = null; }
-  if (!blob) { toast('카드를 만들지 못했어요'); return; }
-  await saveFile(`꼬박꼬박_${mon}.png`, blob);
-}
-
-/* --- 끌어서 옮기기 (마우스·손가락) · 화살표 키 --- */
-let rmDrag = null, rmSwallow = 0, rmKeyT = 0;
-document.addEventListener('pointerdown', e => {
-  const el = e.target.closest && e.target.closest('.room.edit .rm-item');
-  if (!el || (e.button != null && e.button > 0) || S.mode === 'denied') return;
-  const g = mrGeom(el.dataset.id), room = el.closest('.room');
-  if (!g || !room) return;
-  const r = room.getBoundingClientRect(), x0 = parseFloat(el.style.left) / 100 * ROOM_W, y0 = parseFloat(el.style.top) / 100 * ROOM_H;
-  rmDrag = { el, g, id: el.dataset.id, sx: e.clientX, sy: e.clientY, x0, y0, x: x0, y: y0, k: ROOM_W / r.width, pid: e.pointerId, moved: false };
-  try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-});
-document.addEventListener('pointermove', e => {
-  const d = rmDrag;
-  if (!d || e.pointerId !== d.pid) return;
-  const dx = (e.clientX - d.sx) * d.k, dy = (e.clientY - d.sy) * d.k;
-  if (!d.moved && Math.hypot(dx, dy) < 2) return;
-  d.moved = true;
-  e.preventDefault();
-  const p = clampPos(d.g, d.x0 + dx, d.y0 + dy);
-  d.x = p.x; d.y = p.y;
-  d.el.style.left = pcs(p.x, ROOM_W); d.el.style.top = pcs(p.y, ROOM_H); d.el.style.zIndex = 600;
-  d.el.classList.add('dragging');
-});
-function endRoomDrag(e) {
-  const d = rmDrag;
-  if (!d || e.pointerId !== d.pid) return;
-  rmDrag = null;
-  d.el.classList.remove('dragging');
-  if (d.moved) { rmSwallow = Date.now(); S.roomSel = d.id; saveRoomPos(d.id, d.x, d.y); renderView(); const b = document.getElementById('rm-' + d.id); if (b) b.focus({ preventScroll: true }); }
-  else if (deferred) renderView();
-}
-document.addEventListener('pointerup', endRoomDrag);
-document.addEventListener('pointercancel', endRoomDrag);
-function nudgeRoom(id, dx, dy, live) {
-  const g = mrGeom(id), el = document.getElementById('rm-' + id);
-  if (!g || !el) return;
-  const x = parseFloat(el.style.left) / 100 * ROOM_W, y = parseFloat(el.style.top) / 100 * ROOM_H, p = clampPos(g, x + dx, y + dy);
-  el.style.left = pcs(p.x, ROOM_W); el.style.top = pcs(p.y, ROOM_H); el.style.zIndex = zOf(g, p.y);
-  clearTimeout(rmKeyT);
-  if (live) rmKeyT = setTimeout(() => saveRoomPos(id, p.x, p.y), 450);
-  else saveRoomPos(id, p.x, p.y);
-}
-document.addEventListener('keydown', e => {
-  const el = e.target.closest && e.target.closest('.room.edit .rm-item');
-  if (!el || !$('#sheetWrap').hidden) return;
-  const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-  if (k) { e.preventDefault(); const step = e.shiftKey ? 8 : 2; S.roomSel = el.dataset.id; el.classList.add('sel'); nudgeRoom(el.dataset.id, k[0] * step, k[1] * step, true); }
-  else if (e.key === 'Escape' && S.roomSel) { S.roomSel = null; renderView(); }
-});
 
 /* --- 정기결제 점검 --- */
 function subCheckBlock(f) {
@@ -4771,52 +4043,18 @@ function subCheckBlock(f) {
 }
 
 /* --- 버튼 동작 --- */
-const ROOM_ACT = {
+const HABIT_ACT = {
   'f-mood': el => { F.mood = F.mood === el.dataset.v ? '' : el.dataset.v; for (const b of document.querySelectorAll('#sheet [data-act="f-mood"]')) b.setAttribute('aria-pressed', String(b.dataset.v === F.mood)); },
   'mood-set': el => { setMood(el.dataset.id, el.dataset.v); if (F && F.mode === 'mood') rerenderSheet(moodSheet()); },
   'mood-batch': el => openMoodSheet(el.dataset.from, el.dataset.to, el.dataset.t),
-  'go-room': () => go('room'),
-  'rm-sel': el => { if (Date.now() - rmSwallow < 450) return; S.roomSel = S.roomSel === el.dataset.id ? null : el.dataset.id; renderView(); const b = document.getElementById('rm-' + el.dataset.id); if (b) b.focus({ preventScroll: true }); },
-  'rm-done': () => { S.roomSel = null; renderView(); },
-  'rm-nudge': el => { if (S.roomSel) nudgeRoom(S.roomSel, +el.dataset.dx * 2, +el.dataset.dy * 2, false); },
-  'rm-flip': el => flipItem(el.dataset.id),
-  'mr-store': el => { storeItem(el.dataset.id); toast(el.dataset.id === 'me' ? '꼬박이를 잠깐 넣어 뒀어요' : `‘${MR[el.dataset.id].name}’${josa(MR[el.dataset.id].name, '을/를').slice(-1)} 보관함에 넣었어요`); },
-  'mr-place': el => { placeItem(el.dataset.id); if (F && F.mode === 'reward') rerenderSheet(rewardSheet()); },
-  'rw-go': () => { closeSheet(); go('room'); },
-  'rw-open': () => openRewardSheet(),
-  'mr-wear': el => { wearItem(el.dataset.id); if (F && F.mode === 'reward') rerenderSheet(rewardSheet()); },
-  'mr-buy': el => grantByStamp(el.dataset.id),
-  'mr-buyi': el => buyItem(el.dataset.id),
-  'rm-color': el => setFurnColor(el.dataset.id, el.dataset.c),
-  'ch-go': () => { const st = document.getElementById('studio'); if (st) st.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
-  'ch-tab': el => { S.chTab = el.dataset.v; renderView(); const b = document.getElementById('cht-' + el.dataset.v); if (b) b.focus({ preventScroll: true }); },
-  'ch-pick': el => {
-    const slot = el.dataset.slot, id = el.dataset.id, wid = wardId(slot, id);
-    if (chOwn(slot, id)) saveChLook({ [slot]: id });
-    else if (itemPrice(wid) && stampInfo().bal >= itemPrice(wid)) { const r = mrRewardOf(wid); if (r) grantByStamp(r.id); else buyItem(wid); }
-    else toast(lockedHint(wid), { ms: 4200 });
-    const b = document.getElementById(el.id); if (b) b.focus({ preventScroll: true });
-  },
-  'ch-color': el => saveChLook({ [el.dataset.key]: el.dataset.id }),
-  'ch-blush': () => saveChLook({ blush: !chLook().blush }),
-  'ch-random': () => { randomLook(); toast('오늘의 코디예요. 마음에 안 들면 한 번 더 눌러 봐요'); },
-  'mr-savegoal': () => openSaveGoalSheet(),
+  'savegoal': () => openSaveGoalSheet(),
   'sg-set': el => { if (!F || F.mode !== 'savegoal') return; F.amount = +el.dataset.v; const i = $('#sg-amount'); if (i) i.value = fmt(F.amount); const b = $('#sg-save'); if (b) b.disabled = false; },
-  'ms-pick': el => { if (S.mode === 'denied') return; const mon = weekMon(todayStr()); writeRoom({ ['mw_' + mon]: { pick: el.dataset.id, at: Date.now() } }); toast('이번 주 미션을 골랐어요. 마치면 도장 +3!'); },
+  'ms-pick': el => { if (S.mode === 'denied') return; const mon = weekMon(todayStr()); writeRoom({ ['mw_' + mon]: { pick: el.dataset.id, at: Date.now() } }); toast('이번 주 미션을 골랐어요'); },
   'ms-change': () => { if (S.mode === 'denied') return; const mon = weekMon(todayStr()); writeRoom({ ['mw_' + mon]: { pick: '', at: Date.now() } }); },
-  'week-card': () => saveWeekCard(),
   'rv-memo': el => { openMemoSheet(null); if (F && F.mode === 'memo' && catsOf('out').some(c => c.id === el.dataset.cat)) { F.cat = el.dataset.cat; rerenderSheet(memoSheet()); const n = $('#m-name'); if (n) n.focus(); } },
   'sub-check': el => { const s = S.subs[el.dataset.id]; if (!s || S.mode === 'denied') return; writeSubs({ [el.dataset.id]: { ...s, checkedAt: Date.now() } }); if (F && F.mode === 'sub') rerenderSheet(subSheet()); toast(`‘${s.name}’ 점검했어요`); },
 };
-let chNameT = 0;
-function saveChName(v) { const n = String(v || '').trim().slice(0, 8); if (n && n !== chLook().name) saveChLook({ name: n }); }
-document.addEventListener('input', e => { if (e.target && e.target.id === 'ch-name') { clearTimeout(chNameT); const v = e.target.value; chNameT = setTimeout(() => saveChName(v), 700); } });
-document.addEventListener('change', e => { if (e.target && e.target.id === 'ch-name') { clearTimeout(chNameT); saveChName(e.target.value); } });
-if (window.__MOCK__) {
-  window.__stamps = () => { const I = stampInfo(); return { days: [...I.days].sort(), earned: I.earned, spent: I.spent, bal: I.bal, weeks: I.weeks }; };
-  window.__mr = () => ({ owned: MR_ITEMS.filter(i => mrLocked(i.id) && mrOwned(i.id)).map(i => i.id), look: chLook(), placed: mrPlaced().map(p => ({ id: p.g.id, x: p.x, y: p.y, f: p.f, c: (mrEnt(p.g.id) || {}).c || '' })) });
-  window.__roomSvg = () => roomSvgFull(800);
-} // test hooks
+if (window.__MOCK__) window.__stamps = () => { const I = stampInfo(); return { days: [...I.days].sort(), weeks: I.weeks, bonusWeeks: [...I.bonusWeeks].sort(), missionWeeks: [...I.missionWeeks].sort() }; }; // test hook
 
 /* ================= 한 달 돈 흐름: 월급날까지 쓸 수 있는 돈 · 정기 수입 ================= */
 // 정기 수입은 설정(meta/settings)의 incomes에 저장해요: { id, name, emoji, amount, day, cat, acct, shift, active, since, skips }
@@ -4930,7 +4168,7 @@ function flowCard(full) {
   const rows = `<div class="flow-rows">
     ${row('in', '들어올 돈', inSub, M.income, '+')}
     ${row('fix', '고정 지출', M.fixN ? `낸 것 ${won(M.fixPaid)} · 낼 것 ${won(M.fixPlan)}` : '정기결제·고정 납부·대출 상환', M.fixPaid + M.fixPlan, '−')}
-    ${row('save', '저축 목표', M.save ? '한 달에 남길 돈' : `<button class="card-link" type="button" data-act="mr-savegoal" ${dis}>저축 목표 정하기</button>`, M.save, '−')}
+    ${row('save', '저축 목표', M.save ? '한 달에 남길 돈' : `<button class="card-link" type="button" data-act="savegoal" ${dis}>저축 목표 정하기</button>`, M.save, '−')}
     ${row('liv', '쓴 생활비', `고정 지출을 뺀 지출 ${M.livN}건`, M.living, '−')}
     ${noIncome ? '' : row('left', '남은 돈', '', Math.abs(M.left), M.left < 0 ? '−' : '')}
   </div>`;
@@ -5391,7 +4629,6 @@ function go(view) {
   S.view = view; prefs.view = view; savePrefs();
   render();
   window.scrollTo(0, 0);
-  if (view === 'room') announceRewards();
 }
 function shiftMonth(d) { S.ym = addMonths(S.ym, d); S.selDay = null; paceHover = null; render(); }
 function onMoneyInput(el) {
@@ -5506,7 +4743,7 @@ const ACT = {
   ai: () => openAiSheet(),
   'day-open': el => openDaySheet(el.dataset.date),
   'add-goal': () => openGoalSheet(null),
-  nospend: el => { writeNoSpend(el.dataset.date, el.dataset.on === '1'); checkRewards(); toast(el.dataset.on === '1' ? '무지출로 체크했어요. 잘했어요!' : '무지출 체크를 취소했어요'); if (F && F.mode === 'day') openDaySheet(el.dataset.date); },
+  nospend: el => { writeNoSpend(el.dataset.date, el.dataset.on === '1');  toast(el.dataset.on === '1' ? '무지출로 체크했어요. 잘했어요!' : '무지출 체크를 취소했어요'); if (F && F.mode === 'day') openDaySheet(el.dataset.date); },
   setup: () => openSetupSheet(),
   'su-rate': el => { if (!F) return; F.rate = +el.dataset.v; rerenderSheet(setupSheet()); },
   'credit-del': el => { const id = el.dataset.id, prev = S.credit[id]; if (!prev) return; writeCredit({ [id]: null }); toast('기록을 지웠어요', { undo: () => writeCredit({ [id]: prev }) }); },
@@ -5609,7 +4846,7 @@ const ACT = {
   's-method': el => { F.method = el.dataset.id; for (const b of document.querySelectorAll('#sheet [data-act="s-method"]')) b.setAttribute('aria-pressed', String(b.dataset.id === F.method)); },
   's-active': el => { F.active = !F.active; el.setAttribute('aria-checked', String(F.active)); },
   's-delete': () => deleteSub(),
-  ...ROOM_ACT,
+  ...HABIT_ACT,
   ...FLOW_ACT,
   ...RF_ACT,
 };
