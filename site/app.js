@@ -31,7 +31,7 @@ const DEFAULT_METHODS = [
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 const UNKNOWN_CAT = { id: '', name: '미분류', emoji: '🏷️', kind: 'out' };
 const BACKFILL_DAYS = 92; // auto-record never reaches further back than this
-const VIEW_NAMES = ['home', 'room', 'list', 'subs', 'accounts', 'goals', 'loans', 'credit', 'stats', 'budget', 'settings'];
+const VIEW_NAMES = ['home', 'room', 'list', 'income', 'subs', 'refill', 'accounts', 'goals', 'loans', 'credit', 'stats', 'budget', 'settings'];
 
 /* ================= utils ================= */
 const $ = (s, r = document) => r.querySelector(s);
@@ -137,6 +137,7 @@ function normSettings(st) {
   if (s.setup && typeof s.setup === 'object') out.setup = { ...s.setup };
   if (+s.saveGoal > 0) out.saveGoal = Math.round(+s.saveGoal);
   if (Array.isArray(s.incomes) && s.incomes.length) out.incomes = normIncomes(s.incomes);
+  if (Array.isArray(s.refills) && s.refills.length) out.refills = normRefills(s.refills);
   return out;
 }
 const cfg = () => S.settings || normSettings(null);
@@ -519,7 +520,7 @@ function typingInView() {
   const a = document.activeElement;
   return !!a && $view.contains(a) && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(button|checkbox|radio|range|submit)$/.test(a.type)));
 }
-const VIEWS = { home: vHome, room: vRoom, list: vList, subs: vSubs, accounts: vAccounts, goals: vGoals, loans: vLoans, credit: vCredit, stats: vStats, budget: vBudget, settings: vSettings };
+const VIEWS = { home: vHome, room: vRoom, list: vList, income: vIncome, subs: vSubs, refill: vRefill, accounts: vAccounts, goals: vGoals, loans: vLoans, credit: vCredit, stats: vStats, budget: vBudget, settings: vSettings };
 function renderView() {
   if (typingInView() || rmDrag) { deferred = true; return; } // never yank a field (or a dragged 소품) out from under the cursor
   deferred = false;
@@ -709,7 +710,7 @@ function vHome() {
 
   return `<div class="cols">
     <div class="col">${flowCard(false)}${hero}${calCard}${homeReportCard()}${pace}${recent}</div>
-    <div class="col">${budget}${homeAcctCard()}${homeStampCard()}${homeGoalsCard()}${cats}${upc}${meth}</div>
+    <div class="col">${budget}${refillHomeCard()}${homeAcctCard()}${homeStampCard()}${homeGoalsCard()}${cats}${upc}${meth}</div>
   </div>`;
 }
 
@@ -856,7 +857,7 @@ function vList() {
     + `<optgroup label="지출">${catsOf('out').map(c => opt(c.id, `${c.emoji} ${c.name}`, f.cat)).join('')}</optgroup>`
     + `<optgroup label="수입">${catsOf('in').map(c => opt(c.id, `${c.emoji} ${c.name}`, f.cat)).join('')}</optgroup>`;
   const mOpts = opt('', '결제수단 전체', f.method) + cfg().methods.map(m => opt(m.id, m.name, f.method)).join('');
-  return `<div class="view-h"><h1 class="view-title">${mLabel(ym)} 내역</h1>
+  return `<div class="view-switch">${listSwitch('list')}</div><div class="view-h"><h1 class="view-title">${mLabel(ym)} 내역</h1>
       <div class="seg list-seg" role="group" aria-label="보기 방식">${[['list', '목록'], ['cal', '달력'], ['plan', '쓸 돈 메모'], ['often', '자주 쓴 것']].map(([k, l]) => `<button type="button" id="lm-${k}" data-act="list-mode" data-mode="${k}" aria-pressed="${S.listMode === k}">${l}</button>`).join('')}</div></div>
     ${S.listMode === 'plan' ? `<section class="card" id="listRes">${planMode(ym)}</section>` : S.listMode === 'often' ? `<section class="card" id="listRes">${oftenMode(ym)}</section>` : `<div class="filters">
       <div class="seg" role="group" aria-label="수입·지출 구분">${[['all', '전체'], ['out', '지출'], ['in', '수입']].map(([k, l]) => `<button type="button" id="fk-${k}" data-act="kind-filter" data-kind="${k}" aria-pressed="${f.kind === k}">${l}</button>`).join('')}</div>
@@ -1003,7 +1004,7 @@ function vSubs() {
   const parts = [[mSub, '구독'], [mBill, '고정 납부'], [mLoan, '대출']].filter(x => x[0] > 0).map(([v, n]) => `${n} ${won(v)}`);
   const seg = `<div class="seg sub-filter" role="group" aria-label="정기결제 종류">${[['all', '전체'], ['sub', '구독'], ['bill', '고정 납부'], ['loan', '대출']].map(([v, n]) => `<button type="button" id="sf-${v}" data-act="sub-filter" data-v="${v}" aria-pressed="${f === v}">${n}</button>`).join('')}</div>`;
   const auto = cfg().autoSubs;
-  return `<div class="view-h"><h1 class="view-title">구독·정기결제</h1><div class="view-acts"><button class="btn btn-soft btn-sm" type="button" data-act="add-bill" ${S.mode === 'denied' ? 'disabled' : ''}>${icon('plus')}고정 납부</button><button class="btn btn-primary btn-sm" type="button" data-act="add-sub" ${S.mode === 'denied' ? 'disabled' : ''}>${icon('plus')}구독</button></div></div>
+  return `<div class="view-switch">${subsSwitch('subs')}</div><div class="view-h"><h1 class="view-title">구독·정기결제</h1><div class="view-acts"><button class="btn btn-soft btn-sm" type="button" data-act="add-bill" ${S.mode === 'denied' ? 'disabled' : ''}>${icon('plus')}고정 납부</button><button class="btn btn-primary btn-sm" type="button" data-act="add-sub" ${S.mode === 'denied' ? 'disabled' : ''}>${icon('plus')}구독</button></div></div>
     <div class="cols">
       <div class="col">
         <section class="card" data-o="1">
@@ -1151,7 +1152,8 @@ function openTxSheet({ id, date } = {}) {
     const t = hit.t;
     F = { mode: 'tx', id, note: t.note || '', mood: t.mood || '', origYm: hit.ym, kind: t.kind === 'in' ? 'in' : t.kind === 'move' ? 'move' : 'out', from: t.from || '', to: t.to || '', acct: t.acct || '', amount: t.amount, cat: t.cat, memo: t.memo || '', date: t.date, method: t.method || '', sub: t.sub || '', loan: t.loan || '', ex: !!t.ex, at: t.at || 0, catTouched: true };
   } else {
-    F = { mode: 'tx', id: null, note: '', mood: '', origYm: null, kind: 'out', amount: 0, cat: lastCat('out'), memo: '', date: isYmd(date) ? date : defaultDate(), method: lastMethod(), sub: '', ex: false, at: 0, catTouched: false };
+    const k0 = S.view === 'income' ? 'in' : 'out';
+    F = { mode: 'tx', id: null, note: '', mood: '', origYm: null, kind: k0, amount: 0, cat: lastCat(k0), memo: '', date: isYmd(date) ? date : defaultDate(), method: lastMethod(), sub: '', ex: false, at: 0, catTouched: false };
   }
   showSheet(txSheet(), hit ? null : '#f-amount');
 }
@@ -1175,7 +1177,7 @@ function txSheet() {
       ${ncBlock(f)}
       <p class="learn" id="learnHint" aria-live="polite"></p>
     </div>
-    <div class="field"><label class="lab" for="f-memo">내용</label><input class="input" id="f-memo" list="memoList" maxlength="40" placeholder="${f.kind === 'move' ? '예: 비상금 옮기기, 지역화폐 충전' : f.kind === 'in' ? '예: 10월 급여' : '예: 점심, 마트 장보기'}" value="${esc(f.memo)}"><datalist id="memoList">${memoSuggestions(f.kind).map(m => `<option value="${esc(m)}"></option>`).join('')}</datalist></div>
+    <div class="field"><label class="lab" for="f-memo">내용</label><input class="input" id="f-memo" list="memoList" maxlength="40" placeholder="${f.kind === 'move' ? '예: 비상금 옮기기, 지역화폐 충전' : f.kind === 'in' ? '예: 10월 급여' : '예: 점심, 마트 장보기'}" value="${esc(f.memo)}"><datalist id="memoList">${memoSuggestions(f.kind).map(m => `<option value="${esc(m)}"></option>`).join('')}</datalist><div id="rfHint">${rfHintHtml(f)}</div></div>
     ${f.noteOpen || f.note ? `<div class="field note-field"><div class="note-head"><label class="lab" for="f-note">세부 메모 <span class="muted" style="font-weight:400">(선택)</span></label><span class="note-count" id="noteCount">${(f.note || '').length}/${NOTE_MAX}</span></div><textarea class="input note-in" id="f-note" rows="3" maxlength="${NOTE_MAX}" placeholder="예: 친구 3명과 저녁, 1인당 12,000원씩 보내 주기로 함">${esc(f.note || '')}</textarea><div class="chips note-chips" role="group" aria-label="메모에 넣기">${NOTE_TAGS.map(x => `<button class="chip" type="button" data-act="note-tag" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>` : `<button class="card-link note-open" type="button" data-act="note-open">📝 세부 메모 추가</button>`}
     ${moodField(f)}
     <div class="field"><label class="lab" for="f-date">날짜</label><div class="field-row"><input class="input" type="date" id="f-date" value="${f.date}" required><div class="chips"><button class="chip" type="button" id="fd-0" data-act="f-day" data-d="0" ${pressed(f.date === t)}>오늘</button><button class="chip" type="button" id="fd-1" data-act="f-day" data-d="-1" ${pressed(f.date === addDays(t, -1))}>어제</button></div></div></div>
@@ -1238,6 +1240,7 @@ function saveTx() {
   const ym = ymOf(tx.date);
   if (f.id && f.origYm && f.origYm !== ym) writeMonth(f.origYm, { [id]: null });
   writeMonth(ym, { [id]: tx });
+  rfAfterSave(id, tx, f);
   if (tx.kind !== 'move') prefs.lastCat = { ...(prefs.lastCat || {}), [tx.kind]: tx.cat };
   if (tx.method) prefs.lastMethod = tx.method;
   savePrefs();
@@ -4907,7 +4910,7 @@ function flowCard(full) {
   const foot = P.cal && !noIncome ? `<p class="bud-foot">월급날을 등록하면 1일이 아니라 월급날 기준으로 한 달을 계산해요. <button class="card-link" type="button" data-act="inc-add" data-preset="0" ${dis}>월급 등록하기</button></p>` : '';
   return `<section class="card flow-card" data-o="0" id="flowCard">${head}${dueBanner(M)}${big}${rows}${more}${foot}</section>`;
 }
-function incomeCard() {
+function incomeCard(o) {
   const l = incomesArr(), dis = S.mode === 'denied' ? 'disabled' : '', t = todayStr();
   const rows = l.map(inc => {
     const nx = incOccs(inc, t, addDays(t, 62)).find(o => !incGot(o) && !isSkipped(inc, o.id)) || null;
@@ -4915,7 +4918,7 @@ function incomeCard() {
       <span class="tx-main"><span class="sub-name">${esc(inc.name)}${inc.active ? '' : '<span class="tag">멈춤</span>'}</span><span class="sub-meta">매월 ${inc.day}일${inc.shift ? ' · 주말·공휴일이면 앞당겨요' : ''}</span></span>
       <span class="sub-end"><span class="sub-amt in-c">+${won(inc.amount)}</span>${inc.active && nx ? `<span class="dday">${ddayText(nx.date)}</span>` : ''}</span></button>`;
   }).join('');
-  return `<section class="card" id="incomeCard"><div class="card-h"><h2 class="card-t">정기 수입</h2><button class="btn btn-soft btn-sm" type="button" data-act="inc-add" ${dis}>${icon('plus', 'sm')}추가</button></div>
+  return `<section class="card" id="incomeCard"${o ? ` data-o="${o}"` : ''}><div class="card-h"><h2 class="card-t">정기 수입</h2><button class="btn btn-soft btn-sm" type="button" data-act="inc-add" ${dis}>${icon('plus', 'sm')}추가</button></div>
     ${l.length ? `<div class="rank">${rows}</div><p class="bud-foot">받는 날이 되면 ‘들어왔어요’ 한 번으로 기록해요. 금액이 다르면 고쳐서 기록할 수 있어요.</p>`
       : emptyBox('월급처럼 매달 들어오는 돈을 등록하세요', '받는 날을 알려 주면 월급날 기준으로 쓸 수 있는 돈을 계산하고, 그날 한 번에 기록하도록 알려 드려요.', `<button class="btn btn-primary btn-sm" type="button" data-act="inc-add" data-preset="0" ${dis}>월급 등록하기</button>`)}
   </section>`;
@@ -5062,6 +5065,280 @@ document.addEventListener('change', e => {
   else if (el.id === 'i-cat') F.cat = el.value;
 });
 if (window.__MOCK__) window.__flow = () => { const M = moneyFlow(); return { from: M.P.from, to: M.P.to, cal: !!M.P.cal, income: M.income, inGot: M.inGot, inPlan: M.inPlan, fix: M.fixPaid + M.fixPlan, fixPaid: M.fixPaid, save: M.save, living: M.living, left: M.left, daysLeft: M.daysLeft }; }; // test hook
+
+/* ================= 수입: 따로 모아 보고 쉽게 적는 곳 ================= */
+const listSwitch = cur => `<div class="seg" role="group" aria-label="내역·수입 화면"><button type="button" id="lv-list" data-view="list" aria-pressed="${cur === 'list'}">내역</button><button type="button" id="lv-income" data-view="income" aria-pressed="${cur === 'income'}">수입</button></div>`;
+function incomeMonth(ym) {
+  const t = todayStr(), end = `${ym}-${pad(daysIn(ym))}`, from = `${ym}-01` > addDays(t, -31) ? `${ym}-01` : addDays(t, -31);
+  const ins = txsOf(ym).filter(x => x.kind === 'in').sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const plans = end >= from ? incPlans(from, end) : [];
+  return { ins, got: sum(ins.map(x => x.amount)), plans, plan: sum(plans.map(p => p.amount)) };
+}
+function vIncome() {
+  const ym = S.ym, t = todayStr(), dis = S.mode === 'denied' ? 'disabled' : '';
+  const head = `<div class="view-switch">${listSwitch('income')}</div><div class="view-h"><h1 class="view-title">${mLabel(ym)} 수입</h1><div class="view-acts"><button class="btn btn-soft btn-sm" type="button" data-act="inc-add" ${dis}>${icon('repeat', 'sm')}정기 수입</button><button class="btn btn-primary btn-sm" type="button" id="incAddBtn" data-act="add-in" ${dis}>${icon('plus')}수입 기록</button></div></div>`;
+  if (isLoading()) return head + `<section class="card">${emptyBox('불러오는 중이에요', '')}</section>`;
+  const M = incomeMonth(ym), P = incomeMonth(addMonths(ym, -1));
+  // 이번 달 요약
+  let delta = '';
+  if (P.got > 0 && M.got > 0) {
+    const d = M.got - P.got;
+    delta = d > 0 ? `<p class="delta good">${icon('up')}지난달보다 ${won(d)} 더 들어왔어요</p>` : d < 0 ? `<p class="delta">${icon('down')}지난달보다 ${won(-d)} 적게 들어왔어요</p>` : '<p class="delta">지난달과 같아요</p>';
+  }
+  const by = {};
+  for (const x of M.ins) by[x.cat || ''] = (by[x.cat || ''] || 0) + x.amount;
+  const ranked = Object.entries(by).sort((a, b) => b[1] - a[1]), maxC = ranked.length ? ranked[0][1] : 1;
+  const srcRows = ranked.map(([id, v]) => {
+    const c = catOf(id);
+    return `<button class="rank-row" type="button" data-act="filter-cat" data-cat="${esc(id)}" aria-label="${esc(c.name)} ${won(v)}, 내역 보기"><span class="emo" aria-hidden="true"${ccStyle(c)}>${esc(c.emoji)}</span><span class="rank-main"><span class="rank-line"><span class="rank-name">${esc(c.name)}</span><span class="rank-amt">${won(v)}</span></span><span class="bar in"><span style="width:${(v / maxC * 100).toFixed(1)}%"></span></span></span><span class="rank-pct">${share(v, M.got)}</span></button>`;
+  }).join('');
+  const hero = `<section class="card inc-hero" data-o="1">
+    <div class="hero-top"><h2 class="hero-label">${mLabel(ym)}에 들어온 돈</h2><span class="muted" style="font-size:13px">${M.ins.length}건</span></div>
+    <p class="hero-num in-c" id="incTotal">+${fmt(M.got)}<span class="u">원</span></p>${delta}
+    ${M.plan ? `<p class="inc-plan-line">아직 받을 돈 <b>${won(M.plan)}</b> · 다 받으면 <b>${won(M.got + M.plan)}</b></p>` : ''}
+    ${ranked.length ? `<p class="flow-lh">어디서 들어왔나</p><div class="rank">${srcRows}</div>` : ''}
+  </section>`;
+  // 받을 돈 (정기 수입)
+  const planRows = M.plans.map(p => {
+    const n = diffDays(t, p.date), ask = n <= 3;
+    return `<div class="inc-plan${ask ? ' ask' : ''}" id="ipl-${esc(p.id)}"><span class="emo" aria-hidden="true">${esc(p.emoji)}</span><span class="tx-main"><span class="tx-title">${esc(incMemo(p))}</span><span class="tx-sub">${mdw(p.date)} · ${n > 0 ? `D-${n}` : n === 0 ? '오늘' : `${-n}일 지남`}</span></span><span class="tx-amt in">+${won(p.amount)}</span>
+      ${ask ? `<div class="plan-acts"><button class="btn btn-primary btn-sm" type="button" data-act="inc-got" data-id="${esc(p.id)}" ${dis}>들어왔어요</button><button class="btn btn-soft btn-sm" type="button" data-act="inc-amt" data-id="${esc(p.id)}" ${dis}>금액 고치기</button><button class="btn btn-ghost btn-sm" type="button" data-act="inc-skip" data-id="${esc(p.id)}" ${dis}>이번엔 없어요</button></div>` : ''}</div>`;
+  }).join('');
+  const plans = `<section class="card" data-o="2"><div class="card-h"><h2 class="card-t">받을 돈</h2>${M.plan ? `<span class="muted" style="font-size:13px">${won(M.plan)}</span>` : ''}</div>
+    ${planRows ? `<div class="rank">${planRows}</div>` : emptyBox(incomesArr().length ? `${mLabel(ym)}에 더 받을 정기 수입이 없어요` : '정기 수입을 등록하면 받을 날을 알려 드려요', '', incomesArr().length ? '' : `<button class="btn btn-soft btn-sm" type="button" data-act="inc-add" data-preset="0" ${dis}>월급 등록하기</button>`)}</section>`;
+  // 기록
+  const recs = `<section class="card" data-o="3"><div class="card-h"><h2 class="card-t">수입 기록</h2><button class="card-link" type="button" data-act="add-in" ${dis}>${icon('plus', 'sm')}기록하기</button></div>
+    ${M.ins.length ? `<div class="rank" id="incList">${M.ins.map(txRow).join('')}</div>` : emptyBox(`${mLabel(ym)}에 적은 수입이 없어요`, '월급·용돈·부수입을 적으면 여기에 모여요.', `<button class="btn btn-primary btn-sm" type="button" data-act="add-in" ${dis}>${icon('plus')}수입 기록하기</button>`)}</section>`;
+  // 최근 6개월
+  const months = [];
+  for (let i = 5; i >= 0; i--) { const m = addMonths(ym, -i), x = incomeMonth(m); months.push({ m, got: x.got, plan: m >= ymOf(t) ? x.plan : 0 }); }
+  const maxM = Math.max(1, ...months.map(x => x.got + x.plan)), withIn = months.filter(x => x.got > 0);
+  const avg = withIn.length ? Math.round(sum(withIn.map(x => x.got)) / withIn.length) : 0;
+  const trend = `<section class="card" data-o="4"><div class="card-h"><h2 class="card-t">최근 6개월 수입</h2>${avg ? `<span class="muted" style="font-size:13px">평균 ${won(avg)}</span>` : ''}</div>
+    <div class="inc-trend" role="table" aria-label="최근 6개월 수입">${months.map(x => `<div class="it-row${x.m === ym ? ' cur' : ''}" role="row"><span class="it-m" role="rowheader">${+x.m.slice(5)}월</span><span class="it-bar" role="cell" aria-hidden="true"><span class="got" style="width:${(x.got / maxM * 100).toFixed(1)}%"></span>${x.plan ? `<span class="plan" style="width:${(x.plan / maxM * 100).toFixed(1)}%"></span>` : ''}</span><span class="it-v" role="cell">${x.got ? won(x.got) : '–'}${x.plan ? `<small> +${compact(x.plan)} 예정</small>` : ''}</span></div>`).join('')}</div>
+    ${avg && months[5].got && Math.abs(months[5].got - avg) / avg >= 0.2 ? `<p class="bud-foot">${mLabel(ym)} 수입이 평균보다 ${months[5].got > avg ? `${won(months[5].got - avg)} 많아요. 남는 돈은 저축 목표로 먼저 옮겨 두면 좋아요.` : `${won(avg - months[5].got)} 적어요. 쓸 수 있는 돈을 한 번 확인해 보세요.`}</p>` : ''}</section>`;
+  return head + `<div class="cols"><div class="col">${hero}${recs}</div><div class="col">${plans}${trend}${incomeCard(5)}</div></div>`;
+}
+
+/* ================= 생필품 주기: 샴푸·로션처럼 정해진 날 없이 계속 사는 것 ================= */
+// 설정(meta/settings)의 refills에 품목만 저장하고, 구매 기록은 내역에서 이름(키워드)으로 찾아 모아요.
+//   { id, name, emoji, keys: [키워드], guess: 예상 주기(일, 기록이 2번 미만일 때), qty: {기록ID: 개수}, skip: {기록ID: true}, snooze: 'YYYY-MM-DD' }
+const subsSwitch = cur => `<div class="seg" role="group" aria-label="정기결제·생필품 화면"><button type="button" id="sw-subs" data-view="subs" aria-pressed="${cur === 'subs'}">정기결제</button><button type="button" id="sw-refill" data-view="refill" aria-pressed="${cur === 'refill'}">생필품 주기</button></div>`;
+const RF_GUESS = [[0, '모름'], [14, '2주'], [30, '한 달'], [60, '두 달'], [90, '석 달'], [180, '반년']];
+const RF_PRESETS = [['샴푸', '🧴'], ['린스', '🧴'], ['바디워시', '🧼'], ['로션', '🧴'], ['치약', '🪥'], ['칫솔', '🪥'], ['휴지', '🧻'], ['세제', '🫧'], ['섬유유연제', '🫧'], ['물티슈', '🧻'], ['렌즈액', '👁️'], ['쌀', '🍚']];
+function normRefills(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(x => x && x.id && x.name).slice(0, 60).map(x => ({
+    id: String(x.id), name: String(x.name).slice(0, 20), emoji: String(x.emoji || ''), keys: (Array.isArray(x.keys) ? x.keys : []).map(k => String(k).trim().slice(0, 20)).filter(Boolean).slice(0, 6),
+    guess: Math.max(0, x.guess | 0), qty: x.qty && typeof x.qty === 'object' ? { ...x.qty } : {}, skip: x.skip && typeof x.skip === 'object' ? { ...x.skip } : {}, snooze: isYmd(x.snooze) ? x.snooze : '', at: +x.at || 0,
+  }));
+}
+const refillsArr = () => cfg().refills || [];
+const rfById = id => refillsArr().find(x => x.id === id) || null;
+const rfKeys = it => (it.keys && it.keys.length ? it.keys : [it.name]).map(normMemo).filter(Boolean);
+const rfMatch = (it, x) => x.kind === 'out' && !x.sub && !x.loan && !!normMemo(x.memo) && rfKeys(it).some(k => normMemo(x.memo).includes(k));
+const rfOf = x => refillsArr().find(it => rfMatch(it, x)) || null;
+const median = a => { const s = [...a].sort((p, q) => p - q), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+function rfStats(it, t = todayStr()) {
+  const buys = allTxs().filter(x => rfMatch(it, x) && !it.skip[x.id] && x.date <= t).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).map(x => ({ tx: x, n: Math.max(1, +it.qty[x.id] || 1) }));
+  const gaps = [];
+  for (let i = 1; i < buys.length; i++) { const g = diffDays(buys[i - 1].tx.date, buys[i].tx.date) / buys[i - 1].n; if (g >= 1) gaps.push(g); }
+  const cycle = gaps.length ? Math.round(median(gaps)) : it.guess || 0;
+  const last = buys[buys.length - 1] || null;
+  const span = last && cycle ? cycle * last.n : 0;
+  const next = span ? addDays(last.tx.date, span) : '';
+  const dLeft = next ? diffDays(t, next) : null;
+  const left = span ? Math.max(0, 1 - diffDays(last.tx.date, t) / span) : null;
+  const units = sum(buys.map(b => b.n)), unit = units ? sum(buys.map(b => b.tx.amount)) / units : 0, lastUnit = last ? last.tx.amount / last.n : 0;
+  const snoozed = !!(it.snooze && it.snooze > t);
+  const state = !cycle || !last ? 'new' : snoozed ? 'ok' : dLeft <= 0 ? 'out' : dLeft <= 7 ? 'soon' : 'ok';
+  return { buys, gaps, cycle, guessed: !gaps.length && !!it.guess, last, next, dLeft, left, unit, lastUnit, monthly: cycle ? unit * 30 / cycle : 0, range: gaps.length >= 2 ? [Math.round(Math.min(...gaps)), Math.round(Math.max(...gaps))] : null, state, snoozed };
+}
+const rfEmoji = it => it.emoji || '🧴';
+const rfSoon = () => refillsArr().map(it => ({ it, s: rfStats(it) })).filter(x => x.s.state === 'soon' || x.s.state === 'out').sort((a, b) => a.s.dLeft - b.s.dLeft);
+// 자주 사는 것 같아요: 같은 이름으로 2번 넘게, 열흘~반년 간격으로 산 지출 (식비·카페·교통처럼 매일 쓰는 건 빼요)
+const RF_STOP = ['장보기', '마트', '다이소', '쿠팡', '편의점', '올리브영', '시장', '배달', '택시', '선물', '병원', '약국'];
+function rfSuggest() {
+  const g = {}, have = refillsArr();
+  for (const x of allTxs()) {
+    if (x.kind !== 'out' || x.sub || x.loan || ['food', 'cafe', 'transit', 'home', 'subs'].includes(x.cat)) continue;
+    const k = normMemo(x.memo);
+    if (!k || k.length > 12 || RF_STOP.some(w => k.includes(w)) || have.some(it => rfKeys(it).some(kk => k.includes(kk)))) continue;
+    (g[k] = g[k] || []).push(x);
+  }
+  return Object.values(g).filter(a => a.length >= 2).map(a => {
+    a.sort((p, q) => (p.date < q.date ? -1 : 1));
+    const gap = diffDays(a[0].date, a[a.length - 1].date) / (a.length - 1);
+    return { name: a[a.length - 1].memo.trim(), n: a.length, gap: Math.round(gap), avg: sum(a.map(x => x.amount)) / a.length };
+  }).filter(x => x.gap >= 10 && x.gap <= 200).sort((a, b) => b.n - a.n).slice(0, 6);
+}
+
+/* --- 화면 --- */
+function rfGauge(s) {
+  if (s.left == null) return '';
+  const pct = Math.round(s.left * 100), st = s.state === 'out' ? 'out' : s.state === 'soon' ? 'soon' : '';
+  return `<span class="rf-gauge ${st}" role="img" aria-label="남은 양 약 ${pct}%"><span style="width:${Math.max(s.left > 0 ? 4 : 0, pct)}%"></span></span>`;
+}
+function rfWhen(s, it) {
+  if (!s.last) return '<span class="rf-next muted">기록 없음</span>';
+  if (s.snoozed && it) return `<span class="rf-next">미뤄 둠</span><span class="rf-date">${mdLabel(it.snooze)}까지</span>`;
+  if (!s.cycle) return '<span class="rf-next muted">주기 모름</span>';
+  const d = s.dLeft, txt = d < 0 ? `${-d}일 지남` : d === 0 ? '오늘쯤' : `D-${d}`;
+  return `<span class="rf-next ${s.state}">${txt}</span><span class="rf-date">${mdLabel(s.next)}쯤</span>`;
+}
+function rfMeta(it, s) {
+  if (!s.last) return `아직 기록이 없어요 · ‘${esc(rfKeys(it).length ? (it.keys[0] || it.name) : it.name)}’ 들어간 지출을 모아요`;
+  if (!s.cycle) return `${mdLabel(s.last.tx.date)}에 샀어요 · 한 번 더 사면 주기를 알려 드려요`;
+  return `${s.guessed ? '예상 ' : '보통 '}<b>${s.cycle}일</b>마다 · 마지막 ${mdLabel(s.last.tx.date)}${s.last.n > 1 ? ` (${s.last.n}개)` : ''}`;
+}
+function rfRow(it) {
+  const s = rfStats(it);
+  return `<button class="rf-item ${s.state}" type="button" id="rf-${esc(it.id)}" data-act="rf-open" data-id="${esc(it.id)}"><span class="emo" aria-hidden="true">${esc(rfEmoji(it))}</span>
+    <span class="rf-main"><span class="rf-name">${esc(it.name)}${s.buys.length ? `<small>${s.buys.length}번 샀어요</small>` : ''}</span><span class="rf-meta">${rfMeta(it, s)}</span>${rfGauge(s)}</span>
+    <span class="rf-end">${rfWhen(s, it)}</span></button>`;
+}
+function vRefill() {
+  const dis = S.mode === 'denied' ? 'disabled' : '', list = refillsArr();
+  const head = `<div class="view-switch">${subsSwitch('refill')}</div><div class="view-h"><h1 class="view-title">생필품 주기</h1><div class="view-acts"><button class="btn btn-primary btn-sm" type="button" id="rfAddBtn" data-act="rf-add" ${dis}>${icon('plus')}품목 추가</button></div></div>`;
+  if (isLoading()) return head + `<section class="card">${emptyBox('불러오는 중이에요', '')}</section>`;
+  const all = list.map(it => ({ it, s: rfStats(it) }));
+  const order = { out: 0, soon: 1, ok: 2, new: 3 };
+  all.sort((a, b) => order[a.s.state] - order[b.s.state] || (a.s.dLeft ?? 9999) - (b.s.dLeft ?? 9999));
+  const soon = all.filter(x => x.s.state === 'out' || x.s.state === 'soon');
+  const monthly = Math.round(sum(all.map(x => x.s.monthly)));
+  const main = list.length
+    ? `<section class="card" data-o="1"><div class="card-h"><h2 class="card-t">내 생필품</h2><span class="muted" style="font-size:13px">${list.length}개${monthly ? ` · 한 달 약 ${won(monthly)}` : ''}</span></div>
+        <div class="rf-list">${all.map(x => rfRow(x.it)).join('')}</div>
+        <p class="bud-foot">막대는 지난번에 산 날부터 지금까지 쓴 만큼 줄어든 남은 양이에요. 누르면 구매 기록과 가격을 볼 수 있어요.</p></section>`
+    : `<section class="card" data-o="1">${emptyBox('샴푸·로션처럼 떨어지면 다시 사는 걸 등록해요', '정해진 날은 없지만 계속 사는 물건이요. 이름만 등록하면 그 이름이 들어간 지출을 모아서 보통 며칠마다 사는지, 다음엔 언제쯤 살지 알려 드려요.', `<button class="btn btn-primary btn-sm" type="button" data-act="rf-add" ${dis}>${icon('plus')}품목 추가</button>`)}</section>`;
+  const soonCard = soon.length ? `<section class="card rf-soon" data-o="0"><div class="card-h"><h2 class="card-t">곧 살 것</h2><span class="muted" style="font-size:13px">${soon.length}개</span></div>${soon.map(x => rfSoonRow(x.it, x.s)).join('')}</section>` : '';
+  const sug = rfSuggest();
+  const sugCard = sug.length && S.mode !== 'denied' ? `<section class="card" data-o="2"><div class="card-h"><h2 class="card-t">자주 사는 것 같아요</h2></div><p class="bud-foot" style="margin-top:0">같은 이름으로 여러 번 산 지출이에요. 누르면 생필품으로 등록해요.</p>
+      <div class="chips rf-sug">${sug.map((x, i) => `<button class="chip" type="button" id="rfs-${i}" data-act="rf-sug" data-name="${esc(x.name)}"><b>${esc(x.name)}</b> <small>${x.n}번 · 약 ${x.gap}일 간격</small></button>`).join('')}</div></section>` : '';
+  const how = `<section class="card" data-o="3"><div class="card-h"><h2 class="card-t">이렇게 계산해요</h2></div><ul class="report-list rules">
+      <li>지출을 적을 때 내용에 품목 이름(예: 샴푸)을 넣으면 자동으로 모여요.</li>
+      <li>산 날 사이의 간격 중 <b>가운데 값</b>을 주기로 써요. 한 번 늦게 산 달이 있어도 크게 흔들리지 않아요.</li>
+      <li>2개 이상 한 번에 샀다면 개수를 알려 주세요. 그만큼 오래 쓰는 걸로 계산해요.</li>
+      <li>기록이 한 번뿐이면 직접 정한 예상 주기로 먼저 알려 드려요.</li></ul></section>`;
+  return head + `<div class="cols"><div class="col">${soonCard}${main}</div><div class="col">${sugCard}${how}</div></div>`;
+}
+function rfSoonRow(it, s) {
+  const dis = S.mode === 'denied' ? 'disabled' : '';
+  return `<div class="rf-soon-row" id="rfsoon-${esc(it.id)}"><span class="emo" aria-hidden="true">${esc(rfEmoji(it))}</span><span class="tx-main"><span class="tx-title">${esc(it.name)}</span><span class="tx-sub">${s.dLeft < 0 ? `예상보다 ${-s.dLeft}일 지났어요` : s.dLeft === 0 ? '오늘쯤 떨어져요' : `${s.dLeft}일 뒤쯤 떨어져요`} · 보통 ${won(Math.round(s.lastUnit || s.unit))}</span></span>
+    <span class="plan-acts"><button class="btn btn-soft btn-sm" type="button" data-act="rf-memo" data-id="${esc(it.id)}" ${dis}>📝 쓸 돈 메모</button><button class="btn btn-ghost btn-sm" type="button" data-act="rf-snooze" data-id="${esc(it.id)}" ${dis}>아직 있어요</button></span></div>`;
+}
+function refillHomeCard() {
+  if (isLoading()) return '';
+  const soon = rfSoon();
+  if (!soon.length) return '';
+  return `<section class="card rf-soon" data-o="5" id="rfHome"><div class="card-h"><h2 class="card-t">곧 살 생필품</h2><button class="card-link" type="button" data-view="refill">전체${icon('right')}</button></div>${soon.slice(0, 3).map(x => rfSoonRow(x.it, x.s)).join('')}</section>`;
+}
+
+/* --- 품목 시트 --- */
+function openRfSheet(id, pre) {
+  if (S.mode === 'denied') return;
+  const it = id && rfById(id);
+  if (id && !it) return;
+  F = it ? { mode: 'rf', id, name: it.name, emoji: it.emoji, keysText: it.keys.join(', '), guess: it.guess }
+    : { mode: 'rf', id: null, name: (pre && pre.name) || '', emoji: (pre && pre.emoji) || (pre && pre.name ? iconSuggest(pre.name)[0] || '' : ''), keysText: '', guess: 0 };
+  showSheet(rfSheet(), it ? null : '#rf-name');
+}
+const canSaveRf = () => !!(F && F.name.trim());
+function rfDraft() { // 시트에서 고치는 중인 이름·키워드로 미리 계산해요
+  const it = (F.id && rfById(F.id)) || { id: '', qty: {}, skip: {}, snooze: '' };
+  return { ...it, name: F.name.trim() || ' ', emoji: F.emoji, keys: F.keysText.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 6), guess: F.guess };
+}
+function rfSheet() {
+  const f = F, isEdit = !!f.id, dis = S.mode === 'denied' ? 'disabled' : '';
+  const draft = rfDraft(), s = f.name.trim() ? rfStats(draft) : null;
+  const facts = s && s.buys.length ? `<div class="rf-facts">
+      <div><span class="stat-l">보통 주기</span><span class="stat-v">${s.cycle ? `${s.cycle}일${s.guessed ? ' (예상)' : ''}` : '–'}</span>${s.range ? `<small>${s.range[0]}~${s.range[1]}일</small>` : ''}</div>
+      <div><span class="stat-l">다음에 살 때</span><span class="stat-v">${s.next ? `${mdLabel(s.next)}쯤` : '–'}</span>${s.dLeft != null ? `<small>${s.dLeft < 0 ? `${-s.dLeft}일 지남` : `D-${s.dLeft}`}</small>` : ''}</div>
+      <div><span class="stat-l">평균 가격</span><span class="stat-v">${won(Math.round(s.unit))}</span>${s.buys.length > 1 && s.lastUnit ? `<small>지난번 ${s.lastUnit > s.unit * 1.05 ? `${won(Math.round(s.lastUnit - s.unit))} 비쌌어요` : s.lastUnit < s.unit * 0.95 ? `${won(Math.round(s.unit - s.lastUnit))} 쌌어요` : '평균과 비슷해요'}</small>` : ''}</div>
+      <div><span class="stat-l">한 달에</span><span class="stat-v">${s.monthly ? `약 ${won(Math.round(s.monthly))}` : '–'}</span></div>
+    </div>` : '';
+  const hist = s ? allTxs().filter(x => rfMatch(draft, x)).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 30) : [];
+  const histHtml = hist.length ? `<p class="flow-lh">구매 기록 <span class="muted" style="font-weight:400">· 한 번에 산 개수를 고르거나, 다른 물건이면 빼 주세요</span></p><div class="rf-hist">${hist.map(x => {
+    const n = Math.max(1, +draft.qty[x.id] || 1), off = !!draft.skip[x.id];
+    return `<div class="rf-h${off ? ' off' : ''}"><span class="rf-hd">${mdLabel(x.date)}</span><span class="rf-hm">${esc(x.memo)}</span><span class="rf-ha">${won(x.amount)}</span>
+      <span class="rf-hq" role="group" aria-label="${esc(mdLabel(x.date))} 개수">${[1, 2, 3, 4].map(k => `<button type="button" class="chip mini" id="rfq-${esc(x.id)}-${k}" data-act="rf-qty" data-tx="${esc(x.id)}" data-n="${k}" ${pressed(n === k)} ${off || !isEdit ? 'disabled' : ''}>${k}개</button>`).join('')}</span>
+      <button class="card-link rf-hx" type="button" id="rfx-${esc(x.id)}" data-act="rf-skip" data-tx="${esc(x.id)}" ${!isEdit ? 'disabled' : ''}>${off ? '다시 넣기' : '빼기'}</button></div>`;
+  }).join('')}</div>${!isEdit ? '<p class="amt-hint">등록한 뒤에 개수를 고르거나 다른 물건을 뺄 수 있어요.</p>' : ''}` : f.name.trim() ? `<p class="amt-hint rf-none">‘${esc((draft.keys[0] || f.name).trim())}’이 들어간 지출이 아직 없어요. 다음에 살 때 내용에 이 이름을 적으면 여기로 모여요.</p>` : '';
+  return `<form id="rfForm" autocomplete="off" novalidate>
+    <div class="sheet-h"><h2 id="sheetTitle">생필품 ${isEdit ? '보기' : '추가'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
+    ${isEdit ? '' : `<div class="chips preset" role="group" aria-label="자주 사는 생필품">${RF_PRESETS.filter(([n]) => !refillsArr().some(it => it.name === n)).map(([n, e]) => `<button class="chip" type="button" data-act="rf-preset" data-name="${n}" data-emoji="${e}" ${pressed(f.name === n)}>${e} ${n}</button>`).join('')}</div>`}
+    <div class="field"><label class="lab" for="rf-name">품목 이름</label><div class="set-row m" style="grid-template-columns:56px minmax(0,1fr)"><input class="input emoji" id="rf-emoji" value="${esc(f.emoji)}" placeholder="🧴" aria-label="아이콘 이모지" maxlength="8"><input class="input" id="rf-name" value="${esc(f.name)}" placeholder="예: 샴푸, 로션, 휴지" maxlength="20"></div></div>
+    <div class="field"><label class="lab" for="rf-keys">이 말이 들어간 지출을 모아요 <span class="muted" style="font-weight:400">(선택, 쉼표로 여러 개)</span></label><input class="input" id="rf-keys" value="${esc(f.keysText)}" placeholder="비워 두면 품목 이름으로 찾아요. 예: 샴푸, 헤어샴푸" maxlength="80"></div>
+    <div class="field"><span class="lab" id="rgLab">예상 주기 <span class="muted" style="font-weight:400">(두 번 사기 전까지만 써요)</span></span><div class="seg" role="group" aria-labelledby="rgLab" style="width:100%">${RF_GUESS.map(([v, n]) => `<button type="button" id="rg-${v}" data-act="rf-guess" data-v="${v}" ${pressed(f.guess === v)}>${n}</button>`).join('')}</div></div>
+    <div id="rfLive">${facts}${histHtml}</div>
+    <div class="sheet-actions">${isEdit ? `<button class="btn btn-danger" type="button" data-act="rf-delete">${icon('trash')}삭제</button>` : ''}<button class="btn btn-primary btn-block" type="submit" id="rf-save" ${canSaveRf() ? '' : 'disabled'} ${dis}>${isEdit ? '고친 내용 저장' : '등록하기'}</button></div>
+  </form>`;
+}
+function saveRfList(next) { saveSettings({ ...cfg(), refills: next }); }
+function saveRf() {
+  const f = F;
+  if (!canSaveRf()) return;
+  const d = rfDraft(), list = refillsArr(), id = f.id || uid('r');
+  const it = { id, name: f.name.trim().slice(0, 20), emoji: firstGrapheme(f.emoji) || '', keys: d.keys, guess: f.guess | 0, qty: d.qty || {}, skip: d.skip || {}, snooze: d.snooze || '', at: (f.id && rfById(f.id) && rfById(f.id).at) || Date.now() };
+  saveRfList(f.id ? list.map(x => (x.id === id ? it : x)) : [...list, it]);
+  closeSheet();
+  const n = rfStats(it).buys.length;
+  toast(f.id ? '고쳤어요' : n ? `‘${it.name}’ 지출 ${n}건을 찾았어요` : `‘${it.name}’${josa(it.name, '을/를').slice(-1)} 등록했어요`);
+}
+function patchRf(id, fn) {
+  const list = refillsArr(), it = list.find(x => x.id === id);
+  if (!it || S.mode === 'denied') return;
+  saveRfList(list.map(x => (x.id === id ? fn({ ...x, qty: { ...x.qty }, skip: { ...x.skip } }) : x)));
+}
+function refreshRfSheet() { if (F && F.mode === 'rf') { const el = $('#rfLive'); const tmp = document.createElement('div'); tmp.innerHTML = rfSheet(); const nl = tmp.querySelector('#rfLive'); if (el && nl) el.innerHTML = nl.innerHTML; } }
+// 기록 시트: 내용이 생필품 이름과 맞으면 알려 주고 개수를 고를 수 있어요
+function rfHintHtml(f) {
+  if (!f || f.kind !== 'out' || f.sub || f.loan) return '';
+  const it = rfOf({ kind: 'out', memo: f.memo || '' });
+  if (!it) return '';
+  const s = rfStats(it), n = f.rq || (f.id && +it.qty[f.id]) || 1;
+  return `<div class="rf-hint"><span>${esc(rfEmoji(it))} ‘${esc(it.name)}’ 생필품 주기에 모여요${s.cycle ? ` · 보통 ${s.cycle}일마다` : ''}</span><span class="rf-hq" role="group" aria-label="몇 개 샀나요">${[1, 2, 3, 4].map(k => `<button type="button" class="chip mini" id="frq-${k}" data-act="f-rq" data-n="${k}" ${pressed(n === k)}>${k}개</button>`).join('')}</span></div>`;
+}
+function rfAfterSave(id, tx, f) {
+  if (!f || tx.kind !== 'out') return;
+  const it = rfOf(tx);
+  if (!it) return;
+  const n = f.rq || 0, cur = +it.qty[id] || 1;
+  if (n && n !== cur) patchRf(it.id, x => { if (n > 1) x.qty[id] = n; else delete x.qty[id]; return x; });
+  if (it.snooze) patchRf(it.id, x => ({ ...x, snooze: '' })); // 새로 샀으면 미룬 알림은 풀어요
+}
+
+const RF_ACT = {
+  'rf-add': () => openRfSheet(null),
+  'rf-open': el => openRfSheet(el.dataset.id),
+  'rf-sug': el => openRfSheet(null, { name: el.dataset.name }),
+  'rf-preset': el => { F.name = el.dataset.name; F.emoji = el.dataset.emoji; rerenderSheet(rfSheet()); },
+  'rf-guess': el => { F.guess = +el.dataset.v; rerenderSheet(rfSheet()); },
+  'rf-qty': el => { if (!F || !F.id) return; const n = +el.dataset.n, tx = el.dataset.tx; patchRf(F.id, x => { if (n > 1) x.qty[tx] = n; else delete x.qty[tx]; return x; }); rerenderSheet(rfSheet()); },
+  'rf-skip': el => { if (!F || !F.id) return; const tx = el.dataset.tx; patchRf(F.id, x => { if (x.skip[tx]) delete x.skip[tx]; else x.skip[tx] = true; return x; }); rerenderSheet(rfSheet()); },
+  'rf-delete': () => { const f = F, prev = rfById(f.id); closeSheet(); if (!prev) return; saveRfList(refillsArr().filter(x => x.id !== f.id)); toast(`‘${prev.name}’ 품목을 지웠어요. 지출 기록은 그대로예요`, { undo: () => saveRfList([...refillsArr(), prev]) }); },
+  'rf-snooze': el => { const it = rfById(el.dataset.id); if (!it) return; patchRf(it.id, x => ({ ...x, snooze: addDays(todayStr(), 7) })); toast(`‘${it.name}’ 알림을 일주일 미뤘어요`, { undo: () => patchRf(it.id, x => ({ ...x, snooze: '' })) }); },
+  'rf-memo': el => {
+    const it = rfById(el.dataset.id); if (!it) return;
+    const s = rfStats(it), t = todayStr();
+    openMemoSheet(null, s.next && s.next > t ? s.next : t);
+    if (F && F.mode === 'memo') { F.name = it.name; F.amount = Math.round(s.lastUnit || s.unit || 0); const c = s.last && catOf(s.last.tx.cat); if (c && c.id) F.cat = c.id; rerenderSheet(memoSheet()); }
+  },
+  'f-rq': el => { if (!F) return; F.rq = +el.dataset.n; const h = $('#rfHint'); if (h) h.innerHTML = rfHintHtml(F); },
+};
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el || !F) return;
+  if (F.mode === 'rf') {
+    if (el.id === 'rf-name') { F.name = el.value; const b = $('#rf-save'); if (b) b.disabled = !canSaveRf(); clearTimeout(rfLiveT); rfLiveT = setTimeout(refreshRfSheet, 300); }
+    else if (el.id === 'rf-emoji') F.emoji = el.value;
+    else if (el.id === 'rf-keys') { F.keysText = el.value; clearTimeout(rfLiveT); rfLiveT = setTimeout(refreshRfSheet, 300); }
+  } else if (F.mode === 'tx' && el.id === 'f-memo') {
+    const h = $('#rfHint'); if (h) h.innerHTML = rfHintHtml({ ...F, memo: el.value });
+  }
+});
+let rfLiveT = 0;
+if (window.__MOCK__) window.__rf = () => refillsArr().map(it => { const s = rfStats(it); return { name: it.name, n: s.buys.length, cycle: s.cycle, next: s.next, dLeft: s.dLeft, state: s.state, unit: Math.round(s.unit), monthly: Math.round(s.monthly), left: s.left == null ? null : Math.round(s.left * 100) }; }); // test hook
 
 /* ================= toast ================= */
 let toastTimer = 0, toastUndo = null;
@@ -5300,6 +5577,7 @@ const ACT = {
   's-delete': () => deleteSub(),
   ...ROOM_ACT,
   ...FLOW_ACT,
+  ...RF_ACT,
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act], [data-view]');
@@ -5403,6 +5681,7 @@ document.addEventListener('submit', e => {
   else if (F.mode === 'setup') saveSetup();
   else if (F.mode === 'savegoal') saveSaveGoal();
   else if (F.mode === 'inc') saveInc();
+  else if (F.mode === 'rf') saveRf();
   else if (F.mode === 'dep') saveDep();
   else if (F.mode === 'memo') saveMemo();
   else if (F.mode === 'acct') saveAcct();
