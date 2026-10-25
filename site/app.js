@@ -138,6 +138,7 @@ function normSettings(st) {
   if (+s.saveGoal > 0) out.saveGoal = Math.round(+s.saveGoal);
   if (Array.isArray(s.incomes) && s.incomes.length) out.incomes = normIncomes(s.incomes);
   if (Array.isArray(s.refills) && s.refills.length) out.refills = normRefills(s.refills);
+  if (s.profile && typeof s.profile === 'object') out.profile = normProfile(s.profile);
   return out;
 }
 const cfg = () => S.settings || normSettings(null);
@@ -485,6 +486,7 @@ function renderChrome() {
   for (const b of document.querySelectorAll('[data-act="add"]')) b.disabled = S.mode === 'denied';
   for (const b of document.querySelectorAll('.ai-open')) b.hidden = !aiOn();
   renderSync();
+  renderRailMe();
 }
 function renderSync() {
   const el = $('#sync');
@@ -708,7 +710,7 @@ function vHome() {
     ${calGrid(ym, list, { idp: 'hcal', act: 'day-open', sel: null, compact: true })}
   </section>`;
 
-  return `<div class="cols">
+  return `${helloCard()}<div class="cols">
     <div class="col">${flowCard(false)}${hero}${calCard}${homeReportCard()}${pace}${recent}</div>
     <div class="col">${budget}${refillHomeCard()}${homeAcctCard()}${habitCard()}${homeGoalsCard()}${cats}${upc}${meth}</div>
   </div>`;
@@ -833,6 +835,7 @@ function afterView() {
   const host = document.getElementById('pace');
   if (ro) { ro.disconnect(); if (host) ro.observe(host); }
   if (host) { drawPace(); host._w = Math.round(host.clientWidth); }
+  motionAfterView();
 }
 
 /* ---------- list + calendar ---------- */
@@ -1063,6 +1066,7 @@ function vSettings() {
   const ro = S.mode === 'denied' ? 'disabled' : '';
   return `<div class="view-h"><h1 class="view-title">설정</h1></div>
     <div class="cols"><div class="col">
+      ${profileCard()}
       ${lookCard()}
       <section class="card">
         <div class="card-h"><h2 class="card-t">카테고리</h2><div class="seg" role="group" aria-label="카테고리 구분"><button type="button" id="sk-out" data-act="set-kind" data-kind="out" aria-pressed="${kind === 'out'}">지출</button><button type="button" id="sk-in" data-act="set-kind" data-kind="in" aria-pressed="${kind === 'in'}">수입</button></div></div>
@@ -1247,6 +1251,7 @@ function saveTx() {
   closeSheet();
   
   if (!wasEdit) mascotCheer();
+  if (!wasEdit && tx.kind === 'in') setTimeout(() => celebrate($('#toast'), 14), 80);
   if (f.memoId) { markMemoDone(f.memoId, id, tx.amount, tx.date); toast('기록했어요 · 메모는 ‘썼어요’로 정리했어요'); return; }
   const mm = !wasEdit && tx.kind === 'out' && !f.newId ? matchMemo(tx) : null;
   if (mm) { toast(`메모해 둔 ‘${mm.name}’${josa(mm.name, '을/를').slice(-1)} 산 건가요?`, { undo: () => { markMemoDone(mm.id, id, tx.amount, tx.date); toast('메모를 ‘썼어요’로 정리했어요'); }, label: '맞아요', ms: 9000 }); return; }
@@ -1800,7 +1805,7 @@ async function loadAccount() {
     if (!user) return;
     const me = await user.me();
     S.user = { name: me.name || '', avatar: me.avatarUrl || '', email: me.email || '' };
-    const f = $('#railFoot'); if (f) f.textContent = `${josa(S.user.name || S.user.email || '내 계정', '으로/로')} 로그인됨`;
+    S.loginText = `${josa(S.user.name || S.user.email || '내 계정', '으로/로')} 로그인됨`; renderRailMe();
     if (S.view === 'settings') renderView();
   } catch (e) { /* account details are optional */ }
 }
@@ -1896,7 +1901,7 @@ function applyRestore() {
   if (Object.keys(memoP).length) writeMemos(memoP);
   const acctP = { ...(b.accounts || {}) }; for (const k in S.accts) if (!(k in acctP)) acctP[k] = null;
   if (Object.keys(acctP).length) writeAccts(acctP);
-  for (const k of ['wall', 'mascot']) if (b.deco && typeof b.deco[k] === 'string' && b.deco[k].startsWith('data:image/') && b.deco[k] !== S.deco[k]) writeDeco(k, b.deco[k]);
+  for (const k of ['wall', 'mascot', 'avatar']) if (b.deco && typeof b.deco[k] === 'string' && b.deco[k].startsWith('data:image/') && b.deco[k] !== S.deco[k]) writeDeco(k, b.deco[k]);
   for (const ym in (b.nospend || {})) for (const d in b.nospend[ym]) if (b.nospend[ym][d]) writeNoSpend(d, b.nospend[ym][d], true);
   const roomP = { ...(b.room || {}) }; for (const k in S.room) if (!(k in roomP)) roomP[k] = null;
   if (Object.keys(roomP).length) writeRoom(roomP);
@@ -3261,7 +3266,7 @@ const GRADS = [
   { id: 'cotton', name: '솜사탕', c: ['#FBC2EB', '#A6C1EE'] }, { id: 'aurora', name: '오로라', c: ['#7F7FD5', '#91EAE4'] },
 ];
 const ACCENTS = ['#0C7F57', '#0B6E8A', '#2B4FCF', '#6544C4', '#B4245F', '#D2363D', '#B9461A', '#B0500E', '#8A6A00', '#4D6B1F', '#6A3E2A', '#374151'];
-const LOOK_DEF = { accent: '#6544C4', mode: 'auto', bg: 'none', grad: 'dawn', g1: '#A1C4FD', g2: '#FBC2EB', angle: 160, power: 2, blur: 1, dim: 2, glass: false, char: 'none', charSize: 'm', charPos: 'r', talk: true, font: 'plex', numBase: true, fs: 'm', radius: 'md' };
+const LOOK_DEF = { accent: '#6544C4', mode: 'auto', bg: 'none', grad: 'dawn', g1: '#A1C4FD', g2: '#FBC2EB', angle: 160, power: 2, blur: 1, dim: 2, glass: false, char: 'none', charSize: 'm', charPos: 'r', talk: true, font: 'plex', numBase: true, fs: 'm', radius: 'md', motion: 'on', fx: 'coin' };
 const FS = { s: 0.93, m: 1, l: 1.08, xl: 1.16 }, RAD = { sq: 10, md: 20, rd: 28 };
 const isHex = v => /^#[0-9a-fA-F]{6}$/.test(String(v || ''));
 function normLook(l) {
@@ -3272,6 +3277,7 @@ function normLook(l) {
     g1: isHex(x.g1) ? x.g1 : d.g1, g2: isHex(x.g2) ? x.g2 : d.g2, angle: pick(+x.angle, [180, 160, 90], d.angle),
     power: pick(+x.power, [1, 2, 3], d.power), blur: pick(+x.blur, [0, 1, 2], d.blur), dim: pick(+x.dim, [1, 2, 3], d.dim), glass: !!x.glass,
     char: pick(x.char, ['none', 'mine'], d.char), charSize: pick(x.charSize, ['s', 'm', 'l'], d.charSize), charPos: pick(x.charPos, ['r', 'l'], d.charPos), talk: x.talk !== false,
+    motion: pick(x.motion, ['on', 'soft', 'off'], d.motion), fx: pick(x.fx, Object.keys(FX_SETS), d.fx),
     font: pick(x.font, FONTS.map(f => f.id), d.font), numBase: x.numBase !== false, fs: pick(x.fs, Object.keys(FS), d.fs), radius: pick(x.radius, Object.keys(RAD), d.radius),
   };
 }
@@ -3365,6 +3371,7 @@ function applyLook(src) {
   }
   if (on && l.glass) R.setAttribute('data-glass', '1'); else R.removeAttribute('data-glass');
   renderMascot(l);
+  applyMotion();
 }
 if (darkMQ.addEventListener) darkMQ.addEventListener('change', () => { if (document.documentElement.getAttribute('data-pal') === 'custom') applyLook(curLook()); });
 
@@ -3461,7 +3468,7 @@ async function pickDeco(kind, file) {
 const segBtns = (act, cur, opts) => `<div class="seg" role="group" style="width:100%">${opts.map(([v, n]) => `<button type="button" data-act="${act}" data-v="${v}" aria-pressed="${String(cur) === String(v)}">${n}</button>`).join('')}</div>`;
 function lookCard() {
   const tab = S.lookTab || 'color', l = look(), cur = cfg().theme;
-  const tabs = `<div class="seg look-tabs" role="tablist" aria-label="꾸미기">${[['color', '색'], ['bg', '배경'], ['char', '캐릭터'], ['font', '글꼴·크기']].map(([v, n]) => `<button type="button" role="tab" id="lt-${v}" data-act="look-tab" data-v="${v}" aria-pressed="${tab === v}" aria-selected="${tab === v}">${n}</button>`).join('')}</div>`;
+  const tabs = `<div class="seg look-tabs" role="tablist" aria-label="꾸미기">${[['color', '색'], ['bg', '배경'], ['char', '캐릭터'], ['font', '글꼴·크기'], ['motion', '움직임']].map(([v, n]) => `<button type="button" role="tab" id="lt-${v}" data-act="look-tab" data-v="${v}" aria-pressed="${tab === v}" aria-selected="${tab === v}">${n}</button>`).join('')}</div>`;
   let body = '';
   if (tab === 'color') {
     const grp = m => THEMES.filter(x => m.includes(x.mode)).map(x => themeOpt(x, cur)).join('');
@@ -3495,6 +3502,12 @@ function lookCard() {
         ${wall ? `<span class="lab">흐리게</span>${segBtns('lk-blur', l.blur, [['0', '선명하게'], ['1', '살짝'], ['2', '많이']])}
         <span class="lab">위에 덮는 색 <span class="muted" style="font-weight:400">(글자가 잘 보이게)</span></span>${segBtns('lk-dim', l.dim, [['1', '조금'], ['2', '보통'], ['3', '많이']])}` : ''}</div>` : ''}
       ${l.bg !== 'none' ? `<div class="switch-row"><div><span class="card-t">카드 반투명하게</span><p>배경이 카드 뒤로 은은하게 비쳐요. 글자가 잘 안 보이면 꺼 주세요.</p></div><button class="switch" type="button" role="switch" aria-checked="${l.glass}" data-act="lk-glass" aria-label="카드 반투명하게"></button></div>` : ''}`;
+  } else if (tab === 'motion') {
+    body = `<span class="lab">움직임 효과</span>${segBtns('lk-motion', l.motion, [['on', '켜기'], ['soft', '은은하게'], ['off', '끄기']])}
+      <p class="amt-hint">켜면 화면을 열 때 카드가 차례로 떠오르고, 금액이 0부터 올라가고, 막대가 자라나요. 오늘 첫 도장은 쾅 찍혀요. 기기에서 ‘동작 줄이기’를 켜 두었다면 은은하게만 움직여요.</p>
+      <span class="lab">축하 효과 <span class="muted" style="font-weight:400">(오늘 첫 도장 · 수입 기록 · 주 4일 달성 · 주간 미션 완료)</span></span>
+      <div class="chips" role="group" aria-label="축하 효과 모양">${FX_NAMES.map(([v, n]) => `<button class="chip" type="button" id="lkfx-${v}" data-act="lk-fx" data-v="${v}" ${pressed(l.fx === v)}>${n}</button>`).join('')}</div>
+      <div class="habit-acts"><button class="btn btn-soft btn-sm" type="button" id="fxTry" data-act="fx-try">${icon('repeat', 'sm')}미리 보기</button></div>`;
   } else if (tab === 'char') {
     const mine = S.deco && S.deco.mascot;
     body = `<div class="char-opts">
@@ -3644,13 +3657,14 @@ function iconPicker(t, ip) {
   </div>`;
 }
 /* --- 아이콘 + 이름 칸: 카테고리·정기결제·정기 수입·반복 구매·모으기·통장이 모두 같은 모양과 같은 아이콘 고르기를 써요 --- */
-const NIF_MODES = new Set(['sub', 'inc', 'rf', 'goal', 'acct']);
+const NIF_MODES = new Set(['sub', 'inc', 'rf', 'goal', 'acct', 'prof']);
 function nifFallback(t) {
   const m = t && t.mode;
   if (m === 'sub' || m === 'inc') return catOf(t.cat).emoji || '🏷️';
   if (m === 'rf') return '🧴';
   if (m === 'goal') return t.kind === 'saving' ? '🏦' : '🐷';
   if (m === 'acct') return (ACCT_TYPES[t.type] || ACCT_TYPES.bank).e;
+  if (m === 'prof') return '🙂';
   return '🏷️';
 }
 const nifShown = t => (t && t.emoji) || nifFallback(t);
@@ -3671,9 +3685,9 @@ function iconNameHtml(t, ip, o) {
 function catFormHtml(t, ip, kind) {
   return iconNameHtml(t, ip, { id: 'nc-name', label: `${kind === 'in' ? '수입' : '지출'} 카테고리 이름`, ph: kind === 'in' ? '예: 중고거래, 이자' : '예: 반려동물, 술자리, 덕질', max: 20, colors: true });
 }
-const SHEET_OF = { cat: () => catSheet(), sub: () => subSheet(), inc: () => incSheet(), rf: () => rfSheet(), goal: () => goalSheet(), acct: () => acctSheet() };
+const SHEET_OF = { cat: () => catSheet(), sub: () => subSheet(), inc: () => incSheet(), rf: () => rfSheet(), goal: () => goalSheet(), acct: () => acctSheet(), prof: () => profSheet() };
 function nifSync() {
-  const x = { sub: ['#s-save', () => canSaveSub()], inc: ['#i-save', () => canSaveInc()], rf: ['#rf-save', () => canSaveRf()], goal: ['#g-save', () => canSaveGoal()], acct: ['#a-save', () => canSaveAcct()] }[F && F.mode];
+  const x = { sub: ['#s-save', () => canSaveSub()], inc: ['#i-save', () => canSaveInc()], rf: ['#rf-save', () => canSaveRf()], goal: ['#g-save', () => canSaveGoal()], acct: ['#a-save', () => canSaveAcct()], prof: ['#pf-save', () => canSaveProf()] }[F && F.mode];
   if (x) { const b = $(x[0]); if (b) b.disabled = !x[1](); }
 }
 const pickTarget = () => (F && (F.mode === 'cat' || NIF_MODES.has(F.mode)) ? F : F && F.nc ? F.nc : null);
@@ -3921,7 +3935,7 @@ function stampStrip(mon) {
   const t = todayStr(), I = stampInfo();
   return `<ul class="stamp-week" aria-label="이번 주 도장">${range(0, 6).map(i => {
     const d = addDays(mon, i), on = I.days.has(d), fut = d > t;
-    return `<li class="sw-d${on ? ' on' : ''}${d === t ? ' today' : ''}${fut ? ' fut' : ''}"><span class="sw-l">${WD[i]}</span><span class="sw-s">${on ? STAMP_SVG : ''}</span><span class="sr-only">${mdLabel(d)} ${on ? '도장 받음' : fut ? '아직 안 온 날' : '기록 없음'}</span></li>`;
+    return `<li class="sw-d${on ? ' on' : ''}${d === t ? ' today' : ''}${fut ? ' fut' : ''}" data-d="${d}"><span class="sw-l">${WD[i]}</span><span class="sw-s">${on ? STAMP_SVG : ''}</span><span class="sr-only">${mdLabel(d)} ${on ? '도장 받음' : fut ? '아직 안 온 날' : '기록 없음'}</span></li>`;
   }).join('')}</ul>`;
 }
 function weekLine(mon) {
@@ -4259,6 +4273,7 @@ function gotIncome(id) {
   const tx = makeTx({ kind: 'in', amount: p.amount, cat: p.inc.cat, memo: incMemo(p), date, acct: p.inc.acct || mainAcct(), at: Date.now() });
   writeMonth(ym, { [id]: tx });
   toast(`${incMemo(p)} ${won(p.amount)}을 기록했어요`, { undo: () => writeMonth(ym, { [id]: null }) });
+  setTimeout(() => celebrate($('#toast'), 14), 80);
 }
 function fixIncome(id) {
   const p = findIncPlan(id);
@@ -4610,6 +4625,229 @@ document.addEventListener('input', e => {
 let rfLiveT = 0;
 if (window.__MOCK__) window.__rf = () => refillsArr().map(it => { const s = rfStats(it); return { name: it.name, n: s.buys.length, cycle: s.cycle, next: s.next, dLeft: s.dLeft, state: s.state, unit: Math.round(s.unit), monthly: Math.round(s.monthly), left: s.left == null ? null : Math.round(s.left * 100) }; }); // test hook
 
+/* ================= 내 프로필: 닉네임 · 아이콘이나 사진 · 한 줄 소개 · 지금 나는 · 올해 목표 ================= */
+// 설정(meta/settings)의 profile에 저장하고, 사진은 꾸미기 사진처럼 deco/avatar에 작게 줄여 저장해요. 나만 볼 수 있어요.
+const STAGES = [['student', '🎓', '학생'], ['worker', '💼', '직장인'], ['seeker', '📚', '취업 준비'], ['free', '💻', '프리랜서'], ['etc', '🌱', '기타']];
+const LIVINGS = [['alone', '🏠', '혼자 살아요'], ['family', '🏡', '가족과 살아요'], ['share', '🏢', '기숙사·셰어하우스']];
+function normProfile(p) {
+  const x = p && typeof p === 'object' ? p : {};
+  return {
+    nick: String(x.nick || '').trim().slice(0, 12), emoji: String(x.emoji || ''), color: /^#[0-9a-fA-F]{6}$/.test(x.color || '') ? x.color : '',
+    bio: String(x.bio || '').trim().slice(0, 40), stage: STAGES.some(s => s[0] === x.stage) ? x.stage : '', living: LIVINGS.some(s => s[0] === x.living) ? x.living : '', goal: String(x.goal || '').trim().slice(0, 40),
+  };
+}
+const profile = () => { const p = normProfile(cfg().profile); return { ...p, nick: p.nick || (S.user && S.user.name ? S.user.name.slice(0, 12) : '') }; };
+const hasProfile = () => { const p = cfg().profile; return !!((p && (p.nick || p.emoji || p.bio)) || (S.deco && S.deco.avatar)); };
+function avatarHtml(cls = '', p = profile(), photo = S.deco && S.deco.avatar) {
+  return `<span class="pf-av${cls ? ' ' + cls : ''}"${p.color ? ` style="--pc:${p.color}"` : ''} aria-hidden="true">${photo ? `<img src="${photo}" alt="">` : esc(p.emoji || '🙂')}</span>`;
+}
+function longestRun(days) {
+  const a = [...days].sort();
+  let best = 0, run = 0, prev = '';
+  for (const d of a) { run = prev && addDays(prev, 1) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; }
+  return best;
+}
+function profileStats() {
+  const real = allTxs().filter(t => !t.ex && t.kind !== 'move'), I = stampInfo();
+  const first = real.reduce((m, t) => (!m || t.date < m ? t.date : m), '');
+  let ns = 0;
+  for (const ym in S.nospend) for (const d in S.nospend[ym]) if (S.nospend[ym][d]) ns++;
+  return { first, days: first ? diffDays(first, todayStr()) + 1 : 0, n: real.length, stamped: I.total, best: longestRun(I.days), ns };
+}
+function helloLine() {
+  const h = new Date().getHours();
+  return h < 5 ? '늦은 밤까지 수고했어요' : h < 11 ? '좋은 아침이에요' : h < 14 ? '점심은 챙겨 먹었나요' : h < 18 ? '오후도 힘내요' : '오늘 하루 수고했어요';
+}
+// 한눈에 맨 위 인사
+function helloCard() {
+  if (isLoading()) return '';
+  const p = profile(), s = profileStats(), made = hasProfile();
+  const sub = p.bio ? esc(p.bio) : p.goal ? `🎯 ${esc(p.goal)}` : s.days ? `꼬박꼬박 ${s.days}일째 기록하고 있어요` : '오늘 쓴 돈부터 적어 볼까요?';
+  return `<div class="hello" id="hello"><button class="hello-av" type="button" data-act="prof-open" aria-label="내 프로필 ${made ? '보기' : '만들기'}">${avatarHtml('lg', p)}</button>
+    <div class="hello-t"><p class="hello-h">${p.nick ? `<b>${esc(p.nick)}</b>님, ` : ''}${helloLine()}</p><p class="hello-s">${sub}</p></div>
+    ${made ? '' : `<button class="btn btn-soft btn-sm hello-btn" type="button" data-act="prof-open" ${S.mode === 'denied' ? 'disabled' : ''}>프로필 만들기</button>`}</div>`;
+}
+// 설정 맨 위 프로필 카드
+function profileCard() {
+  const p = profile(), s = profileStats(), st = STAGES.find(x => x[0] === p.stage), lv = LIVINGS.find(x => x[0] === p.living);
+  return `<section class="card pf-card" id="pfCard">
+    <div class="pf-top">${avatarHtml('xl', p)}<div class="pf-main"><p class="pf-nick">${esc(p.nick || '이름을 정해 주세요')}</p>${p.bio ? `<p class="pf-bio">${esc(p.bio)}</p>` : ''}
+      ${st || lv ? `<div class="pf-tags">${st ? `<span class="pf-tag">${st[1]} ${st[2]}</span>` : ''}${lv ? `<span class="pf-tag">${lv[1]} ${lv[2]}</span>` : ''}</div>` : ''}</div>
+      <button class="btn btn-soft btn-sm" type="button" id="pfEdit" data-act="prof-open" ${S.mode === 'denied' ? 'disabled' : ''}>${hasProfile() ? '고치기' : '만들기'}</button></div>
+    ${p.goal ? `<p class="pf-goal">🎯 올해 목표 <b>${esc(p.goal)}</b></p>` : ''}
+    <div class="pf-stats">
+      <div><span class="stat-l">기록 시작</span><span class="stat-v">${s.first ? `${s.days}일째` : '–'}</span>${s.first ? `<small>${s.first.replace(/-/g, '.')}부터</small>` : ''}</div>
+      <div><span class="stat-l">적은 기록</span><span class="stat-v">${fmt(s.n)}건</span></div>
+      <div><span class="stat-l">도장 찍힌 날</span><span class="stat-v">${fmt(s.stamped)}일</span></div>
+      <div><span class="stat-l">가장 길게 연속</span><span class="stat-v">${s.best}일</span></div>
+    </div>
+  </section>`;
+}
+// 왼쪽 메뉴 아래: 내 프로필
+function renderRailMe() {
+  const f = $('#railFoot');
+  if (!f) return;
+  if (f.dataset.base == null) f.dataset.base = f.innerHTML;
+  const p = profile(), note = S.loginText || '';
+  const html = `<button class="rail-me" type="button" id="railMe" data-act="prof-open" aria-label="내 프로필">${avatarHtml('sm', p)}<span class="rail-me-t"><b>${esc(p.nick || '내 프로필')}</b><small>${esc(note || (p.bio || '프로필 만들기'))}</small></span></button>${note ? '' : `<span class="rail-note">${f.dataset.base}</span>`}`;
+  if (f.innerHTML !== html) f.innerHTML = html;
+}
+
+/* --- 프로필 시트 --- */
+function openProfSheet() {
+  if (S.mode === 'denied') return;
+  const p = normProfile(cfg().profile);
+  F = { mode: 'prof', ip: ipNew(), iconTouched: !!p.emoji, noAuto: true, name: p.nick || (S.user && S.user.name ? S.user.name.slice(0, 12) : ''), emoji: p.emoji, color: p.color, bio: p.bio, stage: p.stage, living: p.living, goal: p.goal };
+  showSheet(profSheet(), hasProfile() ? null : '#pf-nick');
+}
+const canSaveProf = () => !!(F && F.name.trim());
+function profSheet() {
+  const f = F, photo = S.deco && S.deco.avatar;
+  return `<form id="profForm" autocomplete="off" novalidate>
+    <div class="sheet-h"><h2 id="sheetTitle">내 프로필</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
+    <div class="pf-preview">${avatarHtml('xl', { emoji: f.emoji, color: f.color }, photo)}<div><b>${esc(f.name.trim() || '닉네임')}</b><span>${esc(f.bio.trim() || '한 줄 소개')}</span></div></div>
+    ${iconNameHtml(f, f.ip, { id: 'pf-nick', label: '닉네임', ph: '예: 꼬박러, 짠테크 강현', max: 12, colors: true })}
+    <div class="field pf-photo"><span class="lab">사진 <span class="muted" style="font-weight:400">(선택 · 넣으면 아이콘 대신 보여요)</span></span><div class="habit-acts"><label class="btn btn-soft btn-sm file-btn">${icon('plus', 'sm')}${photo ? '사진 바꾸기' : '사진 넣기'}<input type="file" id="pf-photo" accept="image/*" hidden></label>${photo ? '<button class="btn btn-ghost btn-sm" type="button" data-act="pf-photo-del">사진 빼기</button>' : ''}</div><p class="amt-hint">작게 줄여서 내 계정에만 저장해요.</p></div>
+    <div class="field"><label class="lab" for="pf-bio">한 줄 소개</label><input class="input" id="pf-bio" maxlength="40" placeholder="예: 월급 루팡 대신 월급 저축러" value="${esc(f.bio)}"></div>
+    <div class="field"><span class="lab" id="pfsLab">지금 나는</span><div class="chips" role="group" aria-labelledby="pfsLab">${STAGES.map(([v, e, n]) => `<button class="chip" type="button" id="pfs-${v}" data-act="pf-stage" data-v="${v}" ${pressed(f.stage === v)}>${e} ${n}</button>`).join('')}</div></div>
+    <div class="field"><span class="lab" id="pflLab">사는 곳</span><div class="chips" role="group" aria-labelledby="pflLab">${LIVINGS.map(([v, e, n]) => `<button class="chip" type="button" id="pfl-${v}" data-act="pf-living" data-v="${v}" ${pressed(f.living === v)}>${e} ${n}</button>`).join('')}</div></div>
+    <div class="field"><label class="lab" for="pf-goal">올해 목표</label><input class="input" id="pf-goal" maxlength="40" placeholder="예: 비상금 300만 원 모으기" value="${esc(f.goal)}"></div>
+    <p class="set-note" style="font-size:12.5px">프로필은 나만 볼 수 있어요. 실명·연락처는 적지 않아도 돼요.</p>
+    <div class="sheet-actions"><button class="btn btn-primary btn-block" type="submit" id="pf-save" ${canSaveProf() ? '' : 'disabled'}>저장하기</button></div>
+  </form>`;
+}
+function saveProf() {
+  const f = F;
+  if (!canSaveProf()) return;
+  if (f.emoji && f.iconTouched) pushRecentIcon(firstGrapheme(f.emoji));
+  saveSettings({ ...cfg(), profile: normProfile({ nick: f.name, emoji: firstGrapheme(f.emoji) || '', color: f.color, bio: f.bio, stage: f.stage, living: f.living, goal: f.goal }) });
+  closeSheet();
+  toast('프로필을 저장했어요');
+  renderRailMe();
+}
+async function pickAvatar(file) {
+  try {
+    toast('사진을 줄이는 중이에요…');
+    const data = await shrinkImage(file, 'avatar');
+    await writeDeco('avatar', data);
+    if (F && F.mode === 'prof') rerenderSheet(profSheet());
+    renderRailMe();
+    toast('프로필 사진을 넣었어요');
+  } catch (e) { toast(e && e.message ? e.message : '사진을 넣지 못했어요'); }
+}
+const PROF_ACT = {
+  'prof-open': () => openProfSheet(),
+  'pf-stage': el => { F.stage = F.stage === el.dataset.v ? '' : el.dataset.v; rerenderSheet(profSheet()); },
+  'pf-living': el => { F.living = F.living === el.dataset.v ? '' : el.dataset.v; rerenderSheet(profSheet()); },
+  'pf-photo-del': () => { writeDeco('avatar', ''); if (F && F.mode === 'prof') rerenderSheet(profSheet()); renderRailMe(); },
+};
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!F || F.mode !== 'prof' || !el) return;
+  if (el.id === 'pf-bio') F.bio = el.value;
+  else if (el.id === 'pf-goal') F.goal = el.value;
+  if (el.id === 'pf-bio' || el.id === 'pf-nick') { const pv = document.querySelector('#sheet .pf-preview div'); if (pv) pv.innerHTML = `<b>${esc((el.id === 'pf-nick' ? el.value : F.name).trim() || '닉네임')}</b><span>${esc(F.bio.trim() || '한 줄 소개')}</span>`; }
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el && el.id === 'pf-photo') { const file = el.files && el.files[0]; el.value = ''; if (file) pickAvatar(file); }
+});
+
+/* ================= 움직임 효과: 카드가 차례로 떠오르고 · 숫자가 올라가고 · 막대가 자라고 · 도장이 쾅 · 축하 효과 ================= */
+// 설정 > 꾸미기 > 움직임에서 켜기 / 은은하게 / 끄기와 축하 효과 모양을 골라요. 기기의 ‘동작 줄이기’를 켜면 은은하게만 움직여요.
+const FX_SETS = { coin: ['💰', '💵', '✨'], spark: ['✨', '⭐', '💫'], petal: ['🌸', '🌷', '🍃'], heart: ['💖', '💗', '💕'], party: ['🎉', '🎊', '✨'] };
+const FX_NAMES = [['coin', '💰 동전'], ['spark', '✨ 반짝'], ['petal', '🌸 꽃잎'], ['heart', '💖 하트'], ['party', '🎉 폭죽']];
+function motionQuiet() { return window.__MOCK__ ? !window.__MOCK__.motion : !!navigator.webdriver; } // 자동 검사 중에는 숫자가 바로 보이게
+function motionLevel() {
+  if (motionQuiet()) return 'off';
+  const m = curLook().motion;
+  if (m === 'off') return 'off';
+  let reduce = false;
+  try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { reduce = false; }
+  return m === 'soft' || reduce ? 'soft' : 'on';
+}
+function applyMotion() { document.documentElement.dataset.motion = motionLevel(); }
+function celebrate(at, n = 14, force) {
+  if (motionLevel() !== 'on' && !force) return;
+  const set = FX_SETS[curLook().fx] || FX_SETS.coin;
+  const r = at && at.getBoundingClientRect ? at.getBoundingClientRect() : null;
+  const x = r && r.width ? r.left + r.width / 2 : innerWidth / 2, y = r && r.height ? r.top + r.height / 2 : innerHeight * 0.6;
+  const box = document.createElement('div');
+  box.className = 'fx-burst'; box.setAttribute('aria-hidden', 'true');
+  box.style.left = x + 'px'; box.style.top = y + 'px';
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement('span'), a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4, d = 56 + Math.random() * 74;
+    s.textContent = set[i % set.length];
+    s.style.setProperty('--dx', (Math.cos(a) * d).toFixed(1) + 'px'); s.style.setProperty('--dy', (Math.sin(a) * d).toFixed(1) + 'px');
+    s.style.setProperty('--r', (Math.random() * 260 - 130).toFixed(0) + 'deg'); s.style.setProperty('--d', (Math.random() * 140).toFixed(0) + 'ms');
+    s.style.fontSize = (14 + Math.random() * 10).toFixed(0) + 'px';
+    box.appendChild(s);
+  }
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 1500);
+}
+// 숫자 올라가기: 화면에 처음 들어올 때는 0부터, 값이 바뀌면 이전 값부터
+const mvNums = new Map();
+function countUp(el, key, enter, lvl) {
+  const tn = el.firstChild;
+  if (!tn || tn.nodeType !== 3) return;
+  const m = tn.nodeValue.match(/^([+−-]?)([\d,]+)$/);
+  if (!m) return;
+  const to = +m[2].replace(/,/g, ''), k = key + ':' + (el.id || el.className), seen = mvNums.has(k);
+  const from = seen ? mvNums.get(k) : 0;
+  mvNums.set(k, to);
+  if (lvl !== 'on' || from === to || (!seen && !enter)) return;
+  const t0 = performance.now(), dur = 700, sign = m[1];
+  const step = now => {
+    if (!el.isConnected) return;
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    tn.nodeValue = sign + fmt(Math.round(from + (to - from) * e));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  tn.nodeValue = sign + fmt(from);
+  requestAnimationFrame(step);
+}
+let mvKey = '', mvT = 0, mvStamps = null, mvWeek = null;
+const mvPop = new Map(); // 막 찍힌 도장: 화면이 다시 그려져도 움직임이 이어지게
+function motionAfterView() {
+  const lvl = motionLevel(), key = S.view + '|' + S.ym, enter = key !== mvKey && !isLoading();
+  if (!isLoading()) mvKey = key;
+  if (enter && lvl !== 'off') {
+    let i = 0;
+    for (const c of $view.querySelectorAll('.card, .hello')) c.style.setProperty('--i', Math.min(i++, 9));
+    $view.classList.remove('enter'); void $view.offsetWidth; $view.classList.add('enter');
+    clearTimeout(mvT); mvT = setTimeout(() => $view.classList.remove('enter'), 1300);
+  }
+  for (const el of $view.querySelectorAll('.hero-num, .flow-num')) countUp(el, S.view + '|' + S.ym, enter, lvl);
+  if (isLoading()) return;
+  // 새 도장: 처음 그릴 때 있던 도장은 그대로 두고, 오늘 새로 찍힌 것만 쾅
+  const I = stampInfo(), mon = weekMon(todayStr()), ms = missionState(mon);
+  const week = { four: (I.weeks[mon] || 0) >= STAMP_RULE.weekDays, mission: !!(ms && ms.done) };
+  if (!mvStamps) { mvStamps = new Set(I.days); mvWeek = week; return; }
+  for (const d of I.days) {
+    if (mvStamps.has(d)) continue;
+    mvStamps.add(d);
+    mvPop.set(d, performance.now());
+    if (lvl === 'on') setTimeout(() => { const el = $view.querySelector(`.sw-d[data-d="${d}"]`); if (el) celebrate(el, 10); }, 180);
+  }
+  const now = performance.now();
+  for (const [d, t0] of mvPop) {
+    if (now - t0 > 800) { mvPop.delete(d); continue; }
+    const el = $view.querySelector(`.sw-d[data-d="${d}"]`);
+    if (el && !el.classList.contains('pop')) { el.style.setProperty('--pd', -Math.round(now - t0) + 'ms'); el.classList.add('pop'); }
+  }
+  for (const d of [...mvStamps]) if (!I.days.has(d)) mvStamps.delete(d);
+  if (week.four && !mvWeek.four) celebrate($view.querySelector('#habitCard .stamp-week') || null, 18);
+  if (week.mission && !mvWeek.mission) celebrate($view.querySelector('#habitCard .mission') || null, 18);
+  mvWeek = week;
+}
+try { matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', applyMotion); } catch (e) { /* old browsers */ }
+const MOTION_ACT = {
+  'lk-motion': el => { saveLook({ motion: el.dataset.v }); applyMotion(); },
+  'lk-fx': el => { saveLook({ fx: el.dataset.v }); celebrate(el, 14); },
+  'fx-try': el => celebrate(el, 18, true),
+};
+
 /* ================= toast ================= */
 let toastTimer = 0, toastUndo = null;
 function toast(msg, opts = {}) {
@@ -4847,6 +5085,8 @@ const ACT = {
   's-active': el => { F.active = !F.active; el.setAttribute('aria-checked', String(F.active)); },
   's-delete': () => deleteSub(),
   ...HABIT_ACT,
+  ...PROF_ACT,
+  ...MOTION_ACT,
   ...FLOW_ACT,
   ...RF_ACT,
 };
@@ -4954,6 +5194,7 @@ document.addEventListener('submit', e => {
   else if (F.mode === 'savegoal') saveSaveGoal();
   else if (F.mode === 'inc') saveInc();
   else if (F.mode === 'rf') saveRf();
+  else if (F.mode === 'prof') saveProf();
   else if (F.mode === 'dep') saveDep();
   else if (F.mode === 'memo') saveMemo();
   else if (F.mode === 'acct') saveAcct();
