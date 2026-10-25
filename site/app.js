@@ -1267,10 +1267,10 @@ function openSubSheet(id) {
   const s = id && S.subs[id];
   const t = todayStr();
   if (s) {
-    F = { mode: 'sub', id, name: s.name || '', emoji: s.emoji || '', amount: s.amount || 0, cycle: s.cycle === 'year' ? 'year' : 'month', day: s.day || 1, month: s.month || 1, cat: s.cat || '', method: s.method || '', active: s.active !== false, ex: !!s.ex, since: s.since || t, recordNow: false, type: s.type === 'bill' ? 'bill' : 'sub' };
+    F = { mode: 'sub', ip: ipNew(), iconTouched: !!s.emoji, id, name: s.name || '', emoji: s.emoji || '', amount: s.amount || 0, cycle: s.cycle === 'year' ? 'year' : 'month', day: s.day || 1, month: s.month || 1, cat: s.cat || '', method: s.method || '', active: s.active !== false, ex: !!s.ex, since: s.since || t, recordNow: false, type: s.type === 'bill' ? 'bill' : 'sub' };
   } else {
     const outs = catsOf('out');
-    F = { mode: 'sub', id: null, name: '', emoji: '', amount: 0, cycle: 'month', day: +t.slice(8), month: +t.slice(5, 7), cat: (outs.find(c => c.id === 'subs') || outs[0] || UNKNOWN_CAT).id, method: lastMethod(), active: true, ex: false, since: t, recordNow: true, type: 'sub' };
+    F = { mode: 'sub', ip: ipNew(), iconTouched: false, id: null, name: '', emoji: '', amount: 0, cycle: 'month', day: +t.slice(8), month: +t.slice(5, 7), cat: (outs.find(c => c.id === 'subs') || outs[0] || UNKNOWN_CAT).id, method: lastMethod(), active: true, ex: false, since: t, recordNow: true, type: 'sub' };
   }
   showSheet(subSheet(), s ? null : '#s-name');
 }
@@ -1282,8 +1282,7 @@ function subSheet() {
   return `<form id="subForm" autocomplete="off" novalidate>
     <div class="sheet-h"><h2 id="sheetTitle">${f.type === 'bill' ? '고정 납부' : '구독'} ${isEdit ? '고치기' : '추가'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
     <div class="seg" role="group" aria-label="종류" style="width:100%"><button type="button" id="st-sub" data-act="s-type" data-v="sub" ${pressed(f.type !== 'bill')}>구독</button><button type="button" id="st-bill" data-act="s-type" data-v="bill" ${pressed(f.type === 'bill')}>고정 납부</button>${isEdit ? '' : '<button type="button" id="st-loan" data-act="s-type" data-v="loan" aria-pressed="false">대출</button>'}</div>
-    ${f.type === 'bill' && !isEdit ? `<div class="chips preset" role="group" aria-label="자주 쓰는 항목">${BILL_PRESETS.map((b, i) => `<button class="chip" type="button" data-act="s-preset" data-i="${i}">${b.emoji} ${b.name}</button>`).join('')}</div>` : ''}
-    <div class="field"><label class="lab" for="s-name">이름</label><div class="set-row m" style="grid-template-columns:56px minmax(0,1fr)"><input class="input emoji" id="s-emoji" value="${esc(f.emoji)}" placeholder="${esc(catOf(f.cat).emoji)}" aria-label="아이콘 이모지" maxlength="8"><input class="input" id="s-name" value="${esc(f.name)}" placeholder="${f.type === 'bill' ? '예: 월세, 관리비, 보험료' : '예: 넷플릭스, 유튜브 프리미엄'}" maxlength="30"></div></div>
+    ${iconNameHtml(f, f.ip, { id: 's-name', label: '이름', ph: f.type === 'bill' ? '예: 월세, 관리비, 보험료' : '예: 넷플릭스, 유튜브 프리미엄', max: 30, presets: isEdit ? null : (f.type === 'bill' ? BILL_PRESETS : SUB_PRESETS).map(b => ({ e: b.emoji, n: b.name })), presetAct: 's-preset' })}
     <div class="field"><label class="lab" for="s-amount">한 번에 내는 금액</label><div class="amt"><input id="s-amount" inputmode="numeric" placeholder="0" value="${f.amount ? fmt(f.amount) : ''}"><span>원</span></div></div>
     <div class="field"><span class="lab" id="cyLab">결제 주기</span><div class="seg" role="group" aria-labelledby="cyLab" style="width:100%"><button type="button" id="sc-month" data-act="s-cycle" data-v="month" ${pressed(f.cycle === 'month')}>매월</button><button type="button" id="sc-year" data-act="s-cycle" data-v="year" ${pressed(f.cycle === 'year')}>매년</button></div></div>
     <div class="field"><span class="lab">결제일</span><div class="field-row">${f.cycle === 'year' ? `<select class="input" id="s-month" aria-label="결제 월">${range(1, 12).map(m => `<option value="${m}"${m === f.month ? ' selected' : ''}>${m}월</option>`).join('')}</select>` : ''}<select class="input" id="s-day" aria-label="결제일">${range(1, 31).map(d => `<option value="${d}"${d === f.day ? ' selected' : ''}>${d}일</option>`).join('')}</select></div>
@@ -1305,6 +1304,7 @@ function saveSub() {
     const occ = curPeriodOcc(f);
     since = occ > t ? t : (f.recordNow && cfg().autoSubs ? occ : addDays(t, 1));
   } else if (prev && prev.active === false && f.active && since < t) since = t; // resumed: no backfill for the paused stretch
+  if (f.emoji && f.iconTouched) pushRecentIcon(firstGrapheme(f.emoji));
   const sub = { name: f.name.trim().slice(0, 30), emoji: firstGrapheme(f.emoji), amount: f.amount, cycle: f.cycle, day: f.day, month: f.month, cat: f.cat, method: f.method, since, active: f.active, ex: !!f.ex, type: f.type === 'bill' ? 'bill' : 'sub', skips: (prev && prev.skips) || {}, checkedAt: (prev && prev.checkedAt) || 0 };
   writeSubs({ [id]: sub });
   closeSheet();
@@ -2023,12 +2023,16 @@ function homeGoalsCard() {
   </section>`;
 }
 /* goal sheet */
+const GOAL_PRESETS = {
+  saving: [{ name: '1년 정기적금', emoji: '🏦' }, { name: '청년 적금', emoji: '🌱' }, { name: '주택청약', emoji: '🏠' }],
+  free: [{ name: '비상금', emoji: '🛟' }, { name: '여행 자금', emoji: '✈️' }, { name: '전자기기', emoji: '💻' }, { name: '보증금', emoji: '🔑' }, { name: '경조사비', emoji: '🎁' }, { name: '등록금', emoji: '🎓' }],
+};
 function openGoalSheet(id) {
   if (S.mode === 'denied') return;
   const g = id && S.goals[id], t = todayStr();
   F = g
-    ? { mode: 'goal', id, kind: g.kind === 'saving' ? 'saving' : 'free', name: g.name || '', emoji: g.emoji || '', target: g.target || 0, monthly: g.monthly || 0, rate: String(g.rate ?? ''), term: g.term || 12, start: g.start || t, end: g.end || addMonthsYmd(t, 12), day: g.day || 1, auto: g.auto !== false, contrib: String(g.contrib || ''), taxFree: !!g.taxFree, ex: !!g.ex, since: g.since || t }
-    : { mode: 'goal', id: null, kind: 'saving', name: '', emoji: '', target: 0, monthly: 0, rate: '', term: 12, start: t, end: addMonthsYmd(t, 12), day: +t.slice(8), auto: true, contrib: '', taxFree: false, ex: false, since: t };
+    ? { mode: 'goal', ip: ipNew(), iconTouched: !!g.emoji, id, kind: g.kind === 'saving' ? 'saving' : 'free', name: g.name || '', emoji: g.emoji || '', target: g.target || 0, monthly: g.monthly || 0, rate: String(g.rate ?? ''), term: g.term || 12, start: g.start || t, end: g.end || addMonthsYmd(t, 12), day: g.day || 1, auto: g.auto !== false, contrib: String(g.contrib || ''), taxFree: !!g.taxFree, ex: !!g.ex, since: g.since || t }
+    : { mode: 'goal', ip: ipNew(), iconTouched: false, id: null, kind: 'saving', name: '', emoji: '', target: 0, monthly: 0, rate: '', term: 12, start: t, end: addMonthsYmd(t, 12), day: +t.slice(8), auto: true, contrib: '', taxFree: false, ex: false, since: t };
   showSheet(goalSheet(), g ? null : '#g-name');
 }
 const canSaveGoal = () => !!(F && F.name.trim() && isYmd(F.start) && (F.kind === 'saving' ? F.monthly > 0 && F.term >= 1 && (F.rate === '' || (+F.rate >= 0 && +F.rate < 100)) : F.target > 0 && isYmd(F.end) && F.end > F.start));
@@ -2044,7 +2048,7 @@ function goalSheet() {
   return `<form id="goalForm" autocomplete="off" novalidate>
     <div class="sheet-h"><h2 id="sheetTitle">${isEdit ? '목표 고치기' : '모으기 목표 추가'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
     <div class="seg" role="group" aria-label="목표 종류" style="width:100%"><button type="button" id="gk-saving" data-act="g-kind" data-v="saving" ${pressed(f.kind === 'saving')}>정기적금</button><button type="button" id="gk-free" data-act="g-kind" data-v="free" ${pressed(f.kind === 'free')}>자유 모으기</button></div>
-    <div class="field"><label class="lab" for="g-name">이름</label><div class="set-row m" style="grid-template-columns:56px minmax(0,1fr)"><input class="input emoji" id="g-emoji" value="${esc(f.emoji)}" placeholder="${f.kind === 'saving' ? '🏦' : '🐷'}" aria-label="아이콘 이모지" maxlength="8"><input class="input" id="g-name" maxlength="30" placeholder="${f.kind === 'saving' ? '예: 1년 정기적금' : '예: 여행 자금, 비상금'}" value="${esc(f.name)}"></div></div>
+    ${iconNameHtml(f, f.ip, { id: 'g-name', label: '이름', ph: f.kind === 'saving' ? '예: 1년 정기적금' : '예: 여행 자금, 비상금', max: 30, presets: isEdit ? null : GOAL_PRESETS[f.kind].map(b => ({ e: b.emoji, n: b.name })), presetAct: 'g-pick' })}
     ${f.kind === 'saving' ? `
     <div class="field"><label class="lab" for="g-monthly">매달 넣는 금액</label><div class="amt"><input id="g-monthly" inputmode="numeric" placeholder="0" value="${f.monthly ? fmt(f.monthly) : ''}"><span>원</span></div></div>
     <div class="field-row"><div class="field"><label class="lab" for="g-term">기간 (개월)</label><input class="input" id="g-term" inputmode="numeric" value="${f.term || ''}" placeholder="예: 12"></div><div class="field"><label class="lab" for="g-rate">연 이자율 (%)</label><input class="input" id="g-rate" inputmode="decimal" value="${esc(f.rate)}" placeholder="예: 3.5"></div></div>
@@ -2554,6 +2558,10 @@ function vStats() {
 /* ================= 예정된 정기 납부 (구독·고정 납부·대출) ================= */
 const periodKey = id => id.slice(id.lastIndexOf('_') + 1);
 const isSkipped = (o, id) => !!(o && o.skips && o.skips[periodKey(id)]);
+const SUB_PRESETS = [
+  { name: '넷플릭스', emoji: '📺', cat: 'subs' }, { name: '유튜브 프리미엄', emoji: '▶️', cat: 'subs' }, { name: '쿠팡 와우', emoji: '🛒', cat: 'subs' }, { name: '음악 스트리밍', emoji: '🎧', cat: 'subs' },
+  { name: '배달 멤버십', emoji: '🛵', cat: 'subs' }, { name: '클라우드 저장공간', emoji: '☁️', cat: 'subs' }, { name: 'AI 서비스', emoji: '🤖', cat: 'subs' },
+];
 const BILL_PRESETS = [
   { name: '월세', emoji: '🏠', cat: 'home' }, { name: '관리비', emoji: '🏢', cat: 'home' }, { name: '통신비', emoji: '📱', cat: 'home' },
   { name: '공과금', emoji: '💡', cat: 'home' }, { name: '보험료', emoji: '🛡️', cat: 'health' }, { name: '학원비', emoji: '📚', cat: 'edu' },
@@ -3020,7 +3028,7 @@ function writeAccts(patch) {
   }));
 }
 const acctOf = id => (id && S.accts[id] && S.accts[id].name != null ? { ...S.accts[id], id } : null);
-const acctEmoji = a => (ACCT_TYPES[a.type] || ACCT_TYPES.bank).e;
+const acctEmoji = a => a.emoji || (ACCT_TYPES[a.type] || ACCT_TYPES.bank).e;
 const mainAcct = () => { const l = acctsArr(); return (l.find(a => a.main) || l[0] || { id: '' }).id; };
 // a payment method draws from the account that lists it
 const methodAcct = mid => { if (!mid) return ''; const a = acctsArr().find(x => x.methods && x.methods[mid]); return a ? a.id : ''; };
@@ -3118,8 +3126,8 @@ function openAcctSheet(id, preset) {
   if (id && !a) return;
   const p = ACCT_PRESETS[preset] || null;
   F = a
-    ? { mode: 'acct', id, name: a.name, type: a.type || 'bank', bank: a.bank || '', balance: acctState(a).bal, origBal: acctState(a).bal, main: !!a.main, methods: { ...(a.methods || {}) }, ex: !!a.ex, at: a.at || 0 }
-    : { mode: 'acct', id: null, name: p ? p.name : '', type: p ? p.type : 'bank', bank: '', balance: 0, origBal: null, main: !acctsArr().length, methods: {}, ex: false, at: 0 };
+    ? { mode: 'acct', ip: ipNew(), noAuto: true, iconTouched: !!a.emoji, emoji: a.emoji || '', id, name: a.name, type: a.type || 'bank', bank: a.bank || '', balance: acctState(a).bal, origBal: acctState(a).bal, main: !!a.main, methods: { ...(a.methods || {}) }, ex: !!a.ex, at: a.at || 0 }
+    : { mode: 'acct', ip: ipNew(), noAuto: true, iconTouched: false, emoji: '', id: null, name: p ? p.name : '', type: p ? p.type : 'bank', bank: '', balance: 0, origBal: null, main: !acctsArr().length, methods: {}, ex: false, at: 0 };
   if (!a && !acctsArr().length && (!p || p.type === 'bank')) for (const m of cfg().methods) if (!/현금/.test(m.name)) F.methods[m.id] = true; // first account: card·transfer usually come out of it
   if (!a && p && p.type === 'cash') for (const m of cfg().methods) if (/현금/.test(m.name) && !methodAcct(m.id)) F.methods[m.id] = true;
   showSheet(acctSheet(), a ? null : '#a-name');
@@ -3130,8 +3138,8 @@ function acctSheet() {
   const ms = cfg().methods;
   return `<form id="acctForm" autocomplete="off" novalidate>
     <div class="sheet-h"><h2 id="sheetTitle">${isEdit ? '통장 고치기' : '통장 추가'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
-    ${isEdit ? '' : `<div class="chips preset" role="group" aria-label="자주 쓰는 통장">${ACCT_PRESETS.map((p, i) => `<button class="chip" type="button" data-act="a-preset" data-i="${i}">${ACCT_TYPES[p.type].e} ${p.name}</button>`).join('')}</div>`}
-    <div class="field-row"><div class="field"><label class="lab" for="a-name">이름</label><input class="input" id="a-name" maxlength="20" placeholder="예: 급여통장" value="${esc(f.name)}"></div><div class="field"><label class="lab" for="a-bank">은행·서비스 <span class="muted" style="font-weight:400">(선택)</span></label><input class="input" id="a-bank" maxlength="20" placeholder="예: ○○은행, 탐나는전" value="${esc(f.bank)}"></div></div>
+    ${iconNameHtml(f, f.ip, { id: 'a-name', label: '이름', ph: '예: 급여통장', max: 20, presets: isEdit ? null : ACCT_PRESETS.map(p => ({ e: ACCT_TYPES[p.type].e, n: p.name })), presetAct: 'a-preset' })}
+    <div class="field"><label class="lab" for="a-bank">은행·서비스 <span class="muted" style="font-weight:400">(선택)</span></label><input class="input" id="a-bank" maxlength="20" placeholder="예: ○○은행, 탐나는전" value="${esc(f.bank)}"></div>
     <div class="field"><span class="lab" id="atLab">종류</span><div class="seg" role="group" aria-labelledby="atLab" style="width:100%">${Object.entries(ACCT_TYPES).map(([k, v]) => `<button type="button" id="at-${k}" data-act="a-type" data-v="${k}" ${pressed(f.type === k)}>${v.n}</button>`).join('')}</div></div>
     <div class="field"><label class="lab" for="a-bal">${isEdit ? '지금 잔액' : '지금 잔액 (은행 앱에서 확인)'}</label><div class="amt"><input id="a-bal" inputmode="numeric" placeholder="0" value="${f.balance ? fmt(Math.abs(f.balance)) : ''}"><span>원</span></div><p class="amt-hint" id="aHint">${isEdit ? '바꾸면 오늘 기준으로 잔액을 다시 맞춰요.' : '오늘 이후에 적는 기록부터 이 잔액에 더하고 빼요.'}</p></div>
     <div class="field"><span class="lab" id="amLab">이 통장에서 나가는 결제수단</span><div class="chips" role="group" aria-labelledby="amLab">${ms.map(m => { const other = methodAcct(m.id); const o = other && other !== f.id ? acctOf(other) : null; return `<button class="chip" type="button" id="am-${esc(m.id)}" data-act="a-method" data-id="${esc(m.id)}" ${pressed(!!f.methods[m.id])}>${esc(m.name)}${isLater(m.id) ? ' · 결제 통장' : ''}${o ? ` <small>(지금 ${esc(o.name)})</small>` : ''}</button>`; }).join('')}</div>
@@ -3147,7 +3155,7 @@ function saveAcct() {
   const id = f.id || uid('a'), prev = f.id ? S.accts[f.id] : null, now = Date.now(), t = todayStr();
   const rebase = !prev || f.balance !== f.origBal;
   const acct = {
-    name: f.name.trim().slice(0, 20), type: f.type, bank: f.bank.trim().slice(0, 20), main: !!f.main, methods: { ...f.methods }, ex: !!f.ex, at: f.at || now,
+    name: f.name.trim().slice(0, 20), emoji: firstGrapheme(f.emoji) || '', type: f.type, bank: f.bank.trim().slice(0, 20), main: !!f.main, methods: { ...f.methods }, ex: !!f.ex, at: f.at || now,
     base: rebase ? Math.round(f.balance) : prev.base || 0, baseDate: rebase ? t : prev.baseDate || t, baseAt: rebase ? now : prev.baseAt || 0,
   };
   for (const m of cfg().methods) if (!(m.id in acct.methods)) acct.methods[m.id] = false;
@@ -3639,30 +3647,54 @@ function iconPicker(t, ip) {
     <label class="ip-own"><span>키보드 이모지로 직접</span><input class="input emoji" id="ip-own" maxlength="8" placeholder="입력" autocomplete="off"></label>
   </div>`;
 }
-function catFormHtml(t, ip, kind) {
-  const sug = iconSuggest(t.name).filter(e => e !== t.emoji);
-  return `<div class="nc-head">
-      <button type="button" class="nc-prev" id="ncPrev" data-act="ip-toggle" aria-label="아이콘 고르기"${ccStyle(t)}>${esc(t.emoji || '🏷️')}</button>
-      <div class="field" style="flex:1;min-width:0"><label class="lab" for="nc-name">${kind === 'in' ? '수입' : '지출'} 카테고리 이름</label><input class="input" id="nc-name" maxlength="20" placeholder="${kind === 'in' ? '예: 중고거래, 이자' : '예: 반려동물, 술자리, 덕질'}" value="${esc(t.name)}" autocomplete="off"></div>
-    </div>
-    <div class="nc-sug" id="ncSug">${sug.length ? `<span>추천</span>${sug.map(e => `<button type="button" class="ip-ic sm" data-act="ip-pick" data-e="${esc(e)}" aria-label="${esc(e)}">${esc(e)}</button>`).join('')}` : ''}</div>
-    <div class="nc-colors" role="group" aria-label="색"><span>색</span>${CAT_COLORS.map(c => `<button type="button" class="nc-sw${c ? '' : ' none'}" data-act="nc-color" data-v="${c}" aria-pressed="${(t.color || '') === c}" aria-label="${c || '색 없음'}"${c ? ` style="background:${c}"` : ''}></button>`).join('')}</div>
-    ${ip.open ? iconPicker(t, ip) : ''}`;
+/* --- 아이콘 + 이름 칸: 카테고리·정기결제·정기 수입·반복 구매·모으기·통장이 모두 같은 모양과 같은 아이콘 고르기를 써요 --- */
+const NIF_MODES = new Set(['sub', 'inc', 'rf', 'goal', 'acct']);
+function nifFallback(t) {
+  const m = t && t.mode;
+  if (m === 'sub' || m === 'inc') return catOf(t.cat).emoji || '🏷️';
+  if (m === 'rf') return '🧴';
+  if (m === 'goal') return t.kind === 'saving' ? '🏦' : '🐷';
+  if (m === 'acct') return (ACCT_TYPES[t.type] || ACCT_TYPES.bank).e;
+  return '🏷️';
 }
-const pickTarget = () => (F && F.mode === 'cat' ? F : F && F.nc ? F.nc : null);
+const nifShown = t => (t && t.emoji) || nifFallback(t);
+const ipNew = () => ({ open: false, q: '', grp: recentIcons().length ? 'recent' : 'food' });
+const sugHtml = sug => (sug.length ? `<span>추천</span>${sug.map(e => `<button type="button" class="ip-ic sm" data-act="ip-pick" data-e="${esc(e)}" aria-label="${esc(e)}">${esc(e)}</button>`).join('')}` : '');
+// o: { id, label, ph, max, presets: [{ e, n, attrs }], presetAct, colors }
+function iconNameHtml(t, ip, o) {
+  const sug = iconSuggest(t.name).filter(e => e !== nifShown(t));
+  const pre = o.presets && o.presets.length ? `<div class="nif-pre"><span class="lab">빠르게 고르기</span><div class="chips">${o.presets.map((p, i) => `<button class="chip" type="button" data-act="${o.presetAct}" data-i="${i}"${p.attrs || ''} ${pressed(t.name === p.n)}>${esc(p.e)} ${esc(p.n)}</button>`).join('')}<button class="chip nif-own" type="button" data-act="nif-own" data-for="${o.id}">✏️ 직접 입력</button></div></div>` : '';
+  return `<div class="nif">${pre}
+    <div class="nc-head"><button type="button" class="nc-prev" id="ncPrev" data-act="ip-toggle" aria-expanded="${!!ip.open}" aria-label="아이콘 고르기" title="아이콘 고르기"${ccStyle(t)}>${esc(nifShown(t))}</button>
+      <div class="field" style="flex:1;min-width:0"><label class="lab" for="${o.id}">${o.label}</label><input class="input" id="${o.id}" data-nif="1" maxlength="${o.max || 20}" placeholder="${esc(o.ph)}" value="${esc(t.name)}" autocomplete="off"></div></div>
+    <div class="nc-sug" id="ncSug">${sugHtml(sug)}</div>
+    ${o.colors ? `<div class="nc-colors" role="group" aria-label="색"><span>색</span>${CAT_COLORS.map(c => `<button type="button" class="nc-sw${c ? '' : ' none'}" data-act="nc-color" data-v="${c}" aria-pressed="${(t.color || '') === c}" aria-label="${c || '색 없음'}"${c ? ` style="background:${c}"` : ''}></button>`).join('')}</div>` : ''}
+    ${ip.open ? iconPicker({ emoji: nifShown(t) }, ip) : `<button type="button" class="card-link nif-more" data-act="ip-toggle">${icon('search', 'sm')}아이콘 더 찾기 · 이모지 직접 넣기</button>`}
+  </div>`;
+}
+function catFormHtml(t, ip, kind) {
+  return iconNameHtml(t, ip, { id: 'nc-name', label: `${kind === 'in' ? '수입' : '지출'} 카테고리 이름`, ph: kind === 'in' ? '예: 중고거래, 이자' : '예: 반려동물, 술자리, 덕질', max: 20, colors: true });
+}
+const SHEET_OF = { cat: () => catSheet(), sub: () => subSheet(), inc: () => incSheet(), rf: () => rfSheet(), goal: () => goalSheet(), acct: () => acctSheet() };
+function nifSync() {
+  const x = { sub: ['#s-save', () => canSaveSub()], inc: ['#i-save', () => canSaveInc()], rf: ['#rf-save', () => canSaveRf()], goal: ['#g-save', () => canSaveGoal()], acct: ['#a-save', () => canSaveAcct()] }[F && F.mode];
+  if (x) { const b = $(x[0]); if (b) b.disabled = !x[1](); }
+}
+const pickTarget = () => (F && (F.mode === 'cat' || NIF_MODES.has(F.mode)) ? F : F && F.nc ? F.nc : null);
 function refreshPickerBits() {
   const t = pickTarget(); if (!t) return;
-  const p = $('#ncPrev'); if (p) { p.textContent = t.emoji || '🏷️'; if (t.color) p.style.setProperty('--cc', t.color); else p.style.removeProperty('--cc'); }
-  document.querySelectorAll('#sheet [data-act="ip-pick"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.e === t.emoji)));
+  const p = $('#ncPrev'); if (p) { p.textContent = nifShown(t); if (t.color) p.style.setProperty('--cc', t.color); else p.style.removeProperty('--cc'); }
+  document.querySelectorAll('#sheet [data-act="ip-pick"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.e === nifShown(t))));
   document.querySelectorAll('#sheet [data-act="nc-color"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === (t.color || ''))));
-  const g = $('#ipGrid'); if (g && F.ip) g.innerHTML = iconGridHtml(F.ip, t.emoji);
+  const g = $('#ipGrid'); if (g && F.ip) g.innerHTML = iconGridHtml(F.ip, nifShown(t));
   const s = $('#ncSug');
-  if (s) { const sug = iconSuggest(t.name).filter(e => e !== t.emoji); s.innerHTML = sug.length ? `<span>추천</span>${sug.map(e => `<button type="button" class="ip-ic sm" data-act="ip-pick" data-e="${esc(e)}" aria-label="${esc(e)}">${esc(e)}</button>`).join('')}` : ''; }
+  if (s) s.innerHTML = sugHtml(iconSuggest(t.name).filter(e => e !== nifShown(t)));
+  nifSync();
   const sv = $('#cat-save'); if (sv) sv.disabled = !(t.name || '').trim();
   const ns = $('#nc-save'); if (ns) ns.disabled = !(t.name || '').trim();
 }
 // a typed name picks a fitting icon until the person chooses one
-function autoIcon(t) { if (!t.iconTouched) { const s = iconSuggest(t.name)[0]; t.emoji = s || '🏷️'; } }
+function autoIcon(t) { if (!t.iconTouched && !t.noAuto) { const s = iconSuggest(t.name)[0]; t.emoji = s || (t.mode && t.mode !== 'cat' ? '' : '🏷️'); } }
 
 /* --- new category inside the record sheet --- */
 function ncBlock(f) {
@@ -4930,8 +4962,8 @@ function openIncSheet(id, pre) {
   const inc = id && incById(id);
   if (id && !inc) return;
   const p = pre || {};
-  F = inc ? { mode: 'inc', ...clone(inc) }
-    : { mode: 'inc', id: null, name: p.name || '월급', emoji: p.emoji || '💼', amount: p.amount || 0, day: p.day || 25, cat: p.cat || 'salary', acct: p.acct || '', shift: true, active: true, since: '', skips: {} };
+  F = inc ? { mode: 'inc', ip: ipNew(), iconTouched: !!inc.emoji, ...clone(inc) }
+    : { mode: 'inc', ip: ipNew(), iconTouched: !!p.emoji, id: null, name: p.name || '월급', emoji: p.emoji || '💼', amount: p.amount || 0, day: p.day || 25, cat: p.cat || 'salary', acct: p.acct || '', shift: true, active: true, since: '', skips: {} };
   showSheet(incSheet(), inc ? null : '#i-amount');
 }
 const canSaveInc = () => !!(F && F.name.trim() && F.amount > 0);
@@ -4941,8 +4973,7 @@ function incSheet() {
   const accts = acctsArr();
   return `<form id="incForm" autocomplete="off" novalidate>
     <div class="sheet-h"><h2 id="sheetTitle">정기 수입 ${isEdit ? '고치기' : '등록'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
-    ${isEdit ? '' : `<div class="chips preset" role="group" aria-label="자주 쓰는 항목">${INC_PRESETS.map((b, i) => `<button class="chip" type="button" id="ip-${i}" data-act="i-preset" data-i="${i}" ${pressed(f.name === b.name)}>${b.emoji} ${b.name}</button>`).join('')}</div>`}
-    <div class="field"><label class="lab" for="i-name">이름</label><div class="set-row m" style="grid-template-columns:56px minmax(0,1fr)"><input class="input emoji" id="i-emoji" value="${esc(f.emoji)}" aria-label="아이콘 이모지" maxlength="8"><input class="input" id="i-name" value="${esc(f.name)}" placeholder="예: 월급, 용돈, 알바비" maxlength="30"></div></div>
+    ${iconNameHtml(f, f.ip, { id: 'i-name', label: '이름', ph: '예: 월급, 용돈, 알바비', max: 30, presets: isEdit ? null : INC_PRESETS.map((b, i) => ({ e: b.emoji, n: b.name, attrs: ` id="ip-${i}"` })), presetAct: 'i-preset' })}
     <div class="field"><label class="lab" for="i-amount">한 달에 받는 금액 <span class="muted" style="font-weight:400">(세후 실수령액)</span></label><div class="amt"><input id="i-amount" inputmode="numeric" placeholder="0" value="${f.amount ? fmt(f.amount) : ''}"><span>원</span></div>
       <p class="amt-hint" id="iHint">${f.amount >= 1e4 ? koreanWon(f.amount) : '통장에 실제로 들어오는 금액을 적어요. 달마다 다르면 받는 날 고쳐서 기록하면 돼요.'}</p></div>
     <div class="field"><label class="lab" for="i-day">받는 날</label><div class="field-row"><select class="input" id="i-day">${range(1, 31).map(d => `<option value="${d}"${d === f.day ? ' selected' : ''}>매월 ${d}일</option>`).join('')}</select></div>
@@ -4966,6 +4997,7 @@ function saveInc() {
     const anchor = f.cat === 'salary' || !payIncome();
     since = last && (anchor || last >= payPeriod(t).from) ? last : t;
   }
+  if (f.emoji && f.iconTouched) pushRecentIcon(firstGrapheme(f.emoji));
   const inc = { id, name: f.name.trim().slice(0, 30), emoji: firstGrapheme(f.emoji) || '', amount: Math.round(f.amount), day: f.day, cat: f.cat, acct: f.acct || '', shift: !!f.shift, active: f.active !== false, since, skips: (prev && prev.skips) || {} };
   saveSettings({ ...cfg(), incomes: prev ? list.map(x => (x.id === id ? inc : x)) : [...list, inc] });
   closeSheet();
@@ -5040,7 +5072,7 @@ function applyIncChip(k) {
 const FLOW_ACT = {
   'inc-add': el => openIncSheet(null, el.dataset.preset != null ? INC_PRESETS[+el.dataset.preset] : null),
   'inc-edit': el => openIncSheet(el.dataset.id),
-  'i-preset': el => { const b = INC_PRESETS[+el.dataset.i]; if (!b || !F) return; Object.assign(F, { name: b.name, emoji: b.emoji, cat: b.cat }); rerenderSheet(incSheet()); },
+  'i-preset': el => { const b = INC_PRESETS[+el.dataset.i]; if (!b || !F) return; Object.assign(F, { name: b.name, emoji: b.emoji, cat: b.cat, iconTouched: true }); rerenderSheet(incSheet()); },
   'i-shift': () => { F.shift = !F.shift; rerenderSheet(incSheet()); },
   'i-active': () => { F.active = !F.active; rerenderSheet(incSheet()); },
   'i-acct': el => { F.acct = el.dataset.id; rerenderSheet(incSheet()); },
@@ -5120,12 +5152,12 @@ function vIncome() {
   return head + `<div class="cols"><div class="col">${hero}${recs}</div><div class="col">${plans}${trend}${incomeCard(5)}</div></div>`;
 }
 
-/* ================= 생필품 주기: 샴푸·로션처럼 정해진 날 없이 계속 사는 것 ================= */
+/* ================= 반복 구매: 샴푸·사료·원두처럼 정해진 날 없이 떨어지면 다시 사는 것 ================= */
 // 설정(meta/settings)의 refills에 품목만 저장하고, 구매 기록은 내역에서 이름(키워드)으로 찾아 모아요.
 //   { id, name, emoji, keys: [키워드], guess: 예상 주기(일, 기록이 2번 미만일 때), qty: {기록ID: 개수}, skip: {기록ID: true}, snooze: 'YYYY-MM-DD' }
-const subsSwitch = cur => `<div class="seg" role="group" aria-label="정기결제·생필품 화면"><button type="button" id="sw-subs" data-view="subs" aria-pressed="${cur === 'subs'}">정기결제</button><button type="button" id="sw-refill" data-view="refill" aria-pressed="${cur === 'refill'}">생필품 주기</button></div>`;
+const subsSwitch = cur => `<div class="seg" role="group" aria-label="정기결제·반복 구매 화면"><button type="button" id="sw-subs" data-view="subs" aria-pressed="${cur === 'subs'}">정기결제</button><button type="button" id="sw-refill" data-view="refill" aria-pressed="${cur === 'refill'}">반복 구매</button></div>`;
 const RF_GUESS = [[0, '모름'], [14, '2주'], [30, '한 달'], [60, '두 달'], [90, '석 달'], [180, '반년']];
-const RF_PRESETS = [['샴푸', '🧴'], ['린스', '🧴'], ['바디워시', '🧼'], ['로션', '🧴'], ['치약', '🪥'], ['칫솔', '🪥'], ['휴지', '🧻'], ['세제', '🫧'], ['섬유유연제', '🫧'], ['물티슈', '🧻'], ['렌즈액', '👁️'], ['쌀', '🍚']];
+const RF_PRESETS = [['샴푸', '🧴'], ['바디워시', '🧼'], ['로션', '🧴'], ['치약', '🪥'], ['휴지', '🧻'], ['세제', '🫧'], ['렌즈', '👁️'], ['영양제', '💊'], ['생수', '💧'], ['커피 원두', '☕'], ['쌀', '🍚'], ['반려동물 사료', '🐾'], ['화장품', '💄'], ['프린터 잉크', '🖨️']];
 function normRefills(list) {
   if (!Array.isArray(list)) return [];
   return list.filter(x => x && x.id && x.name).slice(0, 60).map(x => ({
@@ -5199,7 +5231,7 @@ function rfRow(it) {
 }
 function vRefill() {
   const dis = S.mode === 'denied' ? 'disabled' : '', list = refillsArr();
-  const head = `<div class="view-switch">${subsSwitch('refill')}</div><div class="view-h"><h1 class="view-title">생필품 주기</h1><div class="view-acts"><button class="btn btn-primary btn-sm" type="button" id="rfAddBtn" data-act="rf-add" ${dis}>${icon('plus')}품목 추가</button></div></div>`;
+  const head = `<div class="view-switch">${subsSwitch('refill')}</div><div class="view-h"><h1 class="view-title">반복 구매</h1><div class="view-acts"><button class="btn btn-primary btn-sm" type="button" id="rfAddBtn" data-act="rf-add" ${dis}>${icon('plus')}품목 추가</button></div></div>`;
   if (isLoading()) return head + `<section class="card">${emptyBox('불러오는 중이에요', '')}</section>`;
   const all = list.map(it => ({ it, s: rfStats(it) }));
   const order = { out: 0, soon: 1, ok: 2, new: 3 };
@@ -5207,13 +5239,13 @@ function vRefill() {
   const soon = all.filter(x => x.s.state === 'out' || x.s.state === 'soon');
   const monthly = Math.round(sum(all.map(x => x.s.monthly)));
   const main = list.length
-    ? `<section class="card" data-o="1"><div class="card-h"><h2 class="card-t">내 생필품</h2><span class="muted" style="font-size:13px">${list.length}개${monthly ? ` · 한 달 약 ${won(monthly)}` : ''}</span></div>
+    ? `<section class="card" data-o="1"><div class="card-h"><h2 class="card-t">내 반복 구매</h2><span class="muted" style="font-size:13px">${list.length}개${monthly ? ` · 한 달 약 ${won(monthly)}` : ''}</span></div>
         <div class="rf-list">${all.map(x => rfRow(x.it)).join('')}</div>
         <p class="bud-foot">막대는 지난번에 산 날부터 지금까지 쓴 만큼 줄어든 남은 양이에요. 누르면 구매 기록과 가격을 볼 수 있어요.</p></section>`
-    : `<section class="card" data-o="1">${emptyBox('샴푸·로션처럼 떨어지면 다시 사는 걸 등록해요', '정해진 날은 없지만 계속 사는 물건이요. 이름만 등록하면 그 이름이 들어간 지출을 모아서 보통 며칠마다 사는지, 다음엔 언제쯤 살지 알려 드려요.', `<button class="btn btn-primary btn-sm" type="button" data-act="rf-add" ${dis}>${icon('plus')}품목 추가</button>`)}</section>`;
+    : `<section class="card" data-o="1">${emptyBox('떨어지면 다시 사는 걸 등록해요', '샴푸·로션 같은 생필품부터 반려동물 사료·커피 원두·영양제·렌즈처럼 정해진 날은 없지만 계속 사는 물건이요. 이름만 등록하면 그 이름이 들어간 지출을 모아서 보통 며칠마다 사는지, 다음엔 언제쯤 살지 알려 드려요.', `<button class="btn btn-primary btn-sm" type="button" data-act="rf-add" ${dis}>${icon('plus')}품목 추가</button>`)}</section>`;
   const soonCard = soon.length ? `<section class="card rf-soon" data-o="0"><div class="card-h"><h2 class="card-t">곧 살 것</h2><span class="muted" style="font-size:13px">${soon.length}개</span></div>${soon.map(x => rfSoonRow(x.it, x.s)).join('')}</section>` : '';
   const sug = rfSuggest();
-  const sugCard = sug.length && S.mode !== 'denied' ? `<section class="card" data-o="2"><div class="card-h"><h2 class="card-t">자주 사는 것 같아요</h2></div><p class="bud-foot" style="margin-top:0">같은 이름으로 여러 번 산 지출이에요. 누르면 생필품으로 등록해요.</p>
+  const sugCard = sug.length && S.mode !== 'denied' ? `<section class="card" data-o="2"><div class="card-h"><h2 class="card-t">자주 사는 것 같아요</h2></div><p class="bud-foot" style="margin-top:0">같은 이름으로 여러 번 산 지출이에요. 누르면 반복 구매로 등록해요.</p>
       <div class="chips rf-sug">${sug.map((x, i) => `<button class="chip" type="button" id="rfs-${i}" data-act="rf-sug" data-name="${esc(x.name)}"><b>${esc(x.name)}</b> <small>${x.n}번 · 약 ${x.gap}일 간격</small></button>`).join('')}</div></section>` : '';
   const how = `<section class="card" data-o="3"><div class="card-h"><h2 class="card-t">이렇게 계산해요</h2></div><ul class="report-list rules">
       <li>지출을 적을 때 내용에 품목 이름(예: 샴푸)을 넣으면 자동으로 모여요.</li>
@@ -5231,7 +5263,7 @@ function refillHomeCard() {
   if (isLoading()) return '';
   const soon = rfSoon();
   if (!soon.length) return '';
-  return `<section class="card rf-soon" data-o="5" id="rfHome"><div class="card-h"><h2 class="card-t">곧 살 생필품</h2><button class="card-link" type="button" data-view="refill">전체${icon('right')}</button></div>${soon.slice(0, 3).map(x => rfSoonRow(x.it, x.s)).join('')}</section>`;
+  return `<section class="card rf-soon" data-o="5" id="rfHome"><div class="card-h"><h2 class="card-t">곧 다시 살 것</h2><button class="card-link" type="button" data-view="refill">전체${icon('right')}</button></div>${soon.slice(0, 3).map(x => rfSoonRow(x.it, x.s)).join('')}</section>`;
 }
 
 /* --- 품목 시트 --- */
@@ -5239,8 +5271,8 @@ function openRfSheet(id, pre) {
   if (S.mode === 'denied') return;
   const it = id && rfById(id);
   if (id && !it) return;
-  F = it ? { mode: 'rf', id, name: it.name, emoji: it.emoji, keysText: it.keys.join(', '), guess: it.guess }
-    : { mode: 'rf', id: null, name: (pre && pre.name) || '', emoji: (pre && pre.emoji) || (pre && pre.name ? iconSuggest(pre.name)[0] || '' : ''), keysText: '', guess: 0 };
+  F = it ? { mode: 'rf', ip: ipNew(), iconTouched: !!it.emoji, id, name: it.name, emoji: it.emoji, keysText: it.keys.join(', '), guess: it.guess }
+    : { mode: 'rf', ip: ipNew(), iconTouched: false, id: null, name: (pre && pre.name) || '', emoji: (pre && pre.emoji) || (pre && pre.name ? iconSuggest(pre.name)[0] || '' : ''), keysText: '', guess: 0 };
   showSheet(rfSheet(), it ? null : '#rf-name');
 }
 const canSaveRf = () => !!(F && F.name.trim());
@@ -5265,9 +5297,8 @@ function rfSheet() {
       <button class="card-link rf-hx" type="button" id="rfx-${esc(x.id)}" data-act="rf-skip" data-tx="${esc(x.id)}" ${!isEdit ? 'disabled' : ''}>${off ? '다시 넣기' : '빼기'}</button></div>`;
   }).join('')}</div>${!isEdit ? '<p class="amt-hint">등록한 뒤에 개수를 고르거나 다른 물건을 뺄 수 있어요.</p>' : ''}` : f.name.trim() ? `<p class="amt-hint rf-none">‘${esc((draft.keys[0] || f.name).trim())}’이 들어간 지출이 아직 없어요. 다음에 살 때 내용에 이 이름을 적으면 여기로 모여요.</p>` : '';
   return `<form id="rfForm" autocomplete="off" novalidate>
-    <div class="sheet-h"><h2 id="sheetTitle">생필품 ${isEdit ? '보기' : '추가'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
-    ${isEdit ? '' : `<div class="chips preset" role="group" aria-label="자주 사는 생필품">${RF_PRESETS.filter(([n]) => !refillsArr().some(it => it.name === n)).map(([n, e]) => `<button class="chip" type="button" data-act="rf-preset" data-name="${n}" data-emoji="${e}" ${pressed(f.name === n)}>${e} ${n}</button>`).join('')}</div>`}
-    <div class="field"><label class="lab" for="rf-name">품목 이름</label><div class="set-row m" style="grid-template-columns:56px minmax(0,1fr)"><input class="input emoji" id="rf-emoji" value="${esc(f.emoji)}" placeholder="🧴" aria-label="아이콘 이모지" maxlength="8"><input class="input" id="rf-name" value="${esc(f.name)}" placeholder="예: 샴푸, 로션, 휴지" maxlength="20"></div></div>
+    <div class="sheet-h"><h2 id="sheetTitle">반복 구매 ${isEdit ? '보기' : '추가'}</h2><button class="icon-btn" type="button" data-act="close" aria-label="닫기">${icon('x')}</button></div>
+    ${iconNameHtml(f, f.ip, { id: 'rf-name', label: '품목 이름', ph: '예: 샴푸, 고양이 사료, 원두', max: 20, presets: isEdit ? null : RF_PRESETS.filter(([n]) => !refillsArr().some(it => it.name === n)).map(([n, e]) => ({ e, n, attrs: ` data-name="${n}"` })), presetAct: 'rf-preset' })}
     <div class="field"><label class="lab" for="rf-keys">이 말이 들어간 지출을 모아요 <span class="muted" style="font-weight:400">(선택, 쉼표로 여러 개)</span></label><input class="input" id="rf-keys" value="${esc(f.keysText)}" placeholder="비워 두면 품목 이름으로 찾아요. 예: 샴푸, 헤어샴푸" maxlength="80"></div>
     <div class="field"><span class="lab" id="rgLab">예상 주기 <span class="muted" style="font-weight:400">(두 번 사기 전까지만 써요)</span></span><div class="seg" role="group" aria-labelledby="rgLab" style="width:100%">${RF_GUESS.map(([v, n]) => `<button type="button" id="rg-${v}" data-act="rf-guess" data-v="${v}" ${pressed(f.guess === v)}>${n}</button>`).join('')}</div></div>
     <div id="rfLive">${facts}${histHtml}</div>
@@ -5279,6 +5310,7 @@ function saveRf() {
   const f = F;
   if (!canSaveRf()) return;
   const d = rfDraft(), list = refillsArr(), id = f.id || uid('r');
+  if (f.emoji && f.iconTouched) pushRecentIcon(firstGrapheme(f.emoji));
   const it = { id, name: f.name.trim().slice(0, 20), emoji: firstGrapheme(f.emoji) || '', keys: d.keys, guess: f.guess | 0, qty: d.qty || {}, skip: d.skip || {}, snooze: d.snooze || '', at: (f.id && rfById(f.id) && rfById(f.id).at) || Date.now() };
   saveRfList(f.id ? list.map(x => (x.id === id ? it : x)) : [...list, it]);
   closeSheet();
@@ -5297,7 +5329,7 @@ function rfHintHtml(f) {
   const it = rfOf({ kind: 'out', memo: f.memo || '' });
   if (!it) return '';
   const s = rfStats(it), n = f.rq || (f.id && +it.qty[f.id]) || 1;
-  return `<div class="rf-hint"><span>${esc(rfEmoji(it))} ‘${esc(it.name)}’ 생필품 주기에 모여요${s.cycle ? ` · 보통 ${s.cycle}일마다` : ''}</span><span class="rf-hq" role="group" aria-label="몇 개 샀나요">${[1, 2, 3, 4].map(k => `<button type="button" class="chip mini" id="frq-${k}" data-act="f-rq" data-n="${k}" ${pressed(n === k)}>${k}개</button>`).join('')}</span></div>`;
+  return `<div class="rf-hint"><span>${esc(rfEmoji(it))} ‘${esc(it.name)}’ 반복 구매에 모여요${s.cycle ? ` · 보통 ${s.cycle}일마다` : ''}</span><span class="rf-hq" role="group" aria-label="몇 개 샀나요">${[1, 2, 3, 4].map(k => `<button type="button" class="chip mini" id="frq-${k}" data-act="f-rq" data-n="${k}" ${pressed(n === k)}>${k}개</button>`).join('')}</span></div>`;
 }
 function rfAfterSave(id, tx, f) {
   if (!f || tx.kind !== 'out') return;
@@ -5312,7 +5344,7 @@ const RF_ACT = {
   'rf-add': () => openRfSheet(null),
   'rf-open': el => openRfSheet(el.dataset.id),
   'rf-sug': el => openRfSheet(null, { name: el.dataset.name }),
-  'rf-preset': el => { F.name = el.dataset.name; F.emoji = el.dataset.emoji; rerenderSheet(rfSheet()); },
+  'rf-preset': el => { const b = RF_PRESETS.find(([n]) => n === el.dataset.name); if (!b) return; F.name = b[0]; F.emoji = b[1]; F.iconTouched = true; rerenderSheet(rfSheet()); },
   'rf-guess': el => { F.guess = +el.dataset.v; rerenderSheet(rfSheet()); },
   'rf-qty': el => { if (!F || !F.id) return; const n = +el.dataset.n, tx = el.dataset.tx; patchRf(F.id, x => { if (n > 1) x.qty[tx] = n; else delete x.qty[tx]; return x; }); rerenderSheet(rfSheet()); },
   'rf-skip': el => { if (!F || !F.id) return; const tx = el.dataset.tx; patchRf(F.id, x => { if (x.skip[tx]) delete x.skip[tx]; else x.skip[tx] = true; return x; }); rerenderSheet(rfSheet()); },
@@ -5417,7 +5449,7 @@ const ACT = {
   'plan-skip': el => skipPlan(el.dataset.id, el.dataset.date),
   'sub-filter': el => { S.subFilter = el.dataset.v; renderView(); },
   's-type': el => { if (el.dataset.v === 'loan') { const day = F.day; openLoanSheet(null, { prefill: { day } }); return; } F.type = el.dataset.v; const has = id => catsOf('out').some(c => c.id === id); if (F.type === 'bill' && F.cat === 'subs' && has('home')) F.cat = 'home'; if (F.type === 'sub' && F.cat === 'home' && has('subs')) F.cat = 'subs'; rerenderSheet(subSheet()); },
-  's-preset': el => { const b = BILL_PRESETS[+el.dataset.i]; if (!b) return; F.name = b.name; F.emoji = b.emoji; if (catsOf('out').some(c => c.id === b.cat)) F.cat = b.cat; rerenderSheet(subSheet()); const a = $('#s-amount'); if (a) a.focus(); },
+  's-preset': el => { const b = (F.type === 'bill' ? BILL_PRESETS : SUB_PRESETS)[+el.dataset.i]; if (!b) return; F.name = b.name; F.emoji = b.emoji; F.iconTouched = true; if (catsOf('out').some(c => c.id === b.cat)) F.cat = b.cat; rerenderSheet(subSheet()); const a = $('#s-amount'); if (a) a.focus(); },
   'edit-budget': () => openBudgetSheet(),
   'filter-cat': el => { S.filter = { kind: 'all', cat: el.dataset.cat, method: '', q: '' }; S.listMode = 'list'; go('list'); },
   'filter-method': el => { S.filter = { kind: 'out', cat: '', method: el.dataset.id, q: '' }; S.listMode = 'list'; go('list'); },
@@ -5448,7 +5480,8 @@ const ACT = {
   'nc-color': el => { const t = pickTarget(); if (!t) return; t.color = el.dataset.v; refreshPickerBits(); },
   'ip-pick': el => { const t = pickTarget(); if (!t) return; t.emoji = el.dataset.e; t.iconTouched = true; refreshPickerBits(); },
   'ip-grp': el => { F.ip.grp = el.dataset.v; F.ip.q = ''; document.querySelectorAll('#sheet [data-act="ip-grp"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === F.ip.grp))); refreshPickerBits(); },
-  'ip-toggle': () => { F.ip.open = !F.ip.open; rerenderSheet(F.mode === 'cat' ? catSheet() : txSheet()); },
+  'ip-toggle': () => { F.ip = F.ip || ipNew(); F.ip.open = !F.ip.open; rerenderSheet((SHEET_OF[F.mode] || txSheet)()); const q = F.ip.open && $('#ip-q'); if (q && F.mode !== 'cat' && !F.nc) q.focus({ preventScroll: true }); },
+  'nif-own': el => { if (!F) return; const t = pickTarget(); if (t && t.mode) { t.name = ''; t.iconTouched = false; t.emoji = ''; } rerenderSheet((SHEET_OF[F.mode] || txSheet)()); const i = document.getElementById(el.dataset.for); if (i) i.focus(); },
   'del-cat': el => {
     const st = cfg(), c = st.cats.find(x => x.id === el.dataset.id);
     if (!c) return;
@@ -5486,6 +5519,7 @@ const ACT = {
   'goal-hist': el => openGoalHistory(el.dataset.id),
   'dep-del': el => deleteDep(el.dataset.gid, el.dataset.id),
   'g-kind': el => { F.kind = el.dataset.v; rerenderSheet(goalSheet()); },
+  'g-pick': el => { const b = GOAL_PRESETS[F.kind][+el.dataset.i]; if (!b) return; F.name = b.name; F.emoji = b.emoji; F.iconTouched = true; rerenderSheet(goalSheet()); },
   'g-delete': () => deleteGoal(),
   'd-kind': el => { F.kind = el.dataset.v; rerenderSheet(depSheet()); },
   'open-cal': () => { S.listMode = 'cal'; S.selDay = null; prefs.listMode = 'cal'; savePrefs(); go('list'); },
@@ -5590,9 +5624,9 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const el = e.target;
   if (el.id === 'flt-q') { S.filter.q = el.value; updateListResults(); return; }
-  if (el.id === 'nc-name' || el.id === 'ip-q' || el.id === 'ip-own') {
+  if (el.id === 'nc-name' || el.id === 'ip-q' || el.id === 'ip-own' || (el.dataset && el.dataset.nif && F && NIF_MODES.has(F.mode))) {
     const t = pickTarget(); if (!t) return;
-    if (el.id === 'nc-name') { t.name = el.value; autoIcon(t); }
+    if (el.id === 'nc-name' || el.dataset.nif) { t.name = el.value; autoIcon(t); }
     else if (el.id === 'ip-q') { F.ip.q = el.value; const g = document.querySelector('#sheet .ip-groups'); if (g) g.hidden = !!el.value.trim(); }
     else { const v = firstGrapheme(el.value); if (v) { t.emoji = v; t.iconTouched = true; } }
     refreshPickerBits();
@@ -5672,7 +5706,8 @@ document.addEventListener('submit', e => {
   if (!F) return;
   const ae = document.activeElement && document.activeElement.id;
   if (F.nc && (ae === 'nc-name' || ae === 'ip-q' || ae === 'ip-own')) { if (ae === 'nc-name' && (F.nc.name || '').trim()) ACT['nc-save'](); return; }
-  if (F.mode === 'cat') { if (ae === 'ip-q' || ae === 'ip-own') return; saveCatSheet(); return; }
+  if (ae === 'ip-q' || ae === 'ip-own') return;
+  if (F.mode === 'cat') { saveCatSheet(); return; }
   if (F.mode === 'tx') saveTx();
   else if (F.mode === 'sub') saveSub();
   else if (F.mode === 'budget') saveBudget();
